@@ -1,0 +1,6 @@
+{
+  "name": "GymCore Multi-Gym & AI Coach",
+  "description": "Sistema de administración multi-gimnasio con Super Admin, Admin de Gimnasio y Portal Cliente con Chatbot AI DeepSeek para control de rutinas semanales, musculación, deuda, pagos y extras.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
