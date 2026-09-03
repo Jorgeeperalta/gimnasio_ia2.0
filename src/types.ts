@@ -49,6 +49,7 @@ export interface Client {
   monthlyFee: number;
   debtAmount: number; // Control de deuda
   assignedRoutineId?: string;
+  assignedRoutineIds?: string[]; // IDs de rutinas asignadas al atleta
   status: "activo" | "inactivo" | "moroso";
   joinDate: string;
 }
@@ -83,6 +84,7 @@ export interface Routine {
   level: "Principiante" | "Intermedio" | "Avanzado";
   exercises: Exercise[];
   notes?: string;
+  assignedClientIds?: string[]; // IDs de atletas específicos asignados (si está vacío o no se define, es general para la sede)
 }
 
 export interface CompletedWorkout {

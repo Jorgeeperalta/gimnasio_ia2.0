@@ -49,9 +49,10 @@ export const SYSTEM_USERS: UserAccount[] = [
   },
 ];
 
-export function authenticateUser(username: string, password: string): UserAccount | null {
+export function authenticateUser(username: string, password: string, customList?: UserAccount[]): UserAccount | null {
   const cleanUsername = username.trim().toLowerCase();
-  const found = SYSTEM_USERS.find(
+  const list = customList && customList.length > 0 ? customList : SYSTEM_USERS;
+  const found = list.find(
     (u) => u.username.toLowerCase() === cleanUsername && u.password === password
   );
   return found || null;

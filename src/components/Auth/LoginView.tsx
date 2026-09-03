@@ -18,14 +18,17 @@ import {
 interface LoginViewProps {
   onLogin: (user: UserAccount) => void;
   onOpenArchitecture?: () => void;
+  users?: UserAccount[];
 }
 
-export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onOpenArchitecture }) => {
+export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onOpenArchitecture, users }) => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [selectedQuickRole, setSelectedQuickRole] = useState<string | null>(null);
+
+  const activeUsers = users && users.length > 0 ? users : SYSTEM_USERS;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,7 +39,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onOpenArchitectur
       return;
     }
 
-    const user = authenticateUser(username, password);
+    const user = authenticateUser(username, password, activeUsers);
     if (user) {
       onLogin(user);
     } else {

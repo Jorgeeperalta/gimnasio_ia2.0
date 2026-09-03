@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Gym, GymBilling, Client } from "../../types";
+import { Gym, GymBilling, Client, UserAccount, UserRole } from "../../types";
 import {
   Building2,
   Users,
@@ -14,11 +14,21 @@ import {
   TrendingUp,
   Edit,
   Trash2,
+  KeyRound,
+  Shield,
+  Eye,
+  EyeOff,
+  Lock,
+  RefreshCw,
+  UserCheck,
 } from "lucide-react";
 
 interface SuperAdminViewProps {
   gyms: Gym[];
-  onAddGym: (gym: Omit<Gym, "id" | "createdAt">) => void;
+  onAddGym: (
+    gym: Omit<Gym, "id" | "createdAt">,
+    adminCredentials?: { name: string; username: string; password: string; email: string }
+  ) => void;
   onEditGym: (gym: Gym) => void;
   onDeleteGym: (gymId: string) => void;
   onUpdateGymStatus: (gymId: string, status: Gym["billingStatus"]) => void;
@@ -30,6 +40,10 @@ interface SuperAdminViewProps {
   clients: Client[];
   onEditClient: (client: Client) => void;
   onDeleteClient: (clientId: string) => void;
+  users: UserAccount[];
+  onAddUser: (user: UserAccount) => void;
+  onEditUser: (user: UserAccount) => void;
+  onDeleteUser: (userId: string) => void;
 }
 
 export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
@@ -46,23 +60,34 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
   clients,
   onEditClient,
   onDeleteClient,
+  users,
+  onAddUser,
+  onEditUser,
+  onDeleteUser,
 }) => {
-  const [activeTab, setActiveTab] = useState<"gyms" | "cobros" | "clients">("gyms");
+  const [activeTab, setActiveTab] = useState<"gyms" | "cobros" | "clients" | "users">("gyms");
   const [isAddGymOpen, setIsAddGymOpen] = useState(false);
   const [isNewBillOpen, setIsNewBillOpen] = useState(false);
+  const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   // Edit states
   const [editingGym, setEditingGym] = useState<Gym | null>(null);
   const [editingBill, setEditingBill] = useState<GymBilling | null>(null);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
+  const [showEditUserPassword, setShowEditUserPassword] = useState(false);
+  const [revealedPasswords, setRevealedPasswords] = useState<{ [userId: string]: boolean }>({});
+  const [userRoleFilter, setUserRoleFilter] = useState<string>("all");
+  const [userGymFilter, setUserGymFilter] = useState<string>("all");
+
   const [itemToDelete, setItemToDelete] = useState<{
-    type: "gym" | "bill" | "client";
+    type: "gym" | "bill" | "client" | "user";
     id: string;
     name: string;
   } | null>(null);
 
-  // Form states for new gym
+  // Form states for new gym (with admin account)
   const [newGymName, setNewGymName] = useState("");
   const [newGymCode, setNewGymCode] = useState("");
   const [newGymAddress, setNewGymAddress] = useState("");
@@ -70,6 +95,20 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
   const [newGymEmail, setNewGymEmail] = useState("");
   const [newGymFee, setNewGymFee] = useState(150);
   const [newGymPlan, setNewGymPlan] = useState<"Básico" | "Pro" | "Enterprise">("Pro");
+  const [newAdminName, setNewAdminName] = useState("");
+  const [newAdminUsername, setNewAdminUsername] = useState("");
+  const [newAdminPassword, setNewAdminPassword] = useState("Gym123");
+  const [newAdminEmail, setNewAdminEmail] = useState("");
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+
+  // Form states for new user
+  const [userFormName, setUserFormName] = useState("");
+  const [userFormUsername, setUserFormUsername] = useState("");
+  const [userFormPassword, setUserFormPassword] = useState("Afm123");
+  const [userFormEmail, setUserFormEmail] = useState("");
+  const [userFormRole, setUserFormRole] = useState<UserRole>("gym_admin");
+  const [userFormGymId, setUserFormGymId] = useState(gyms[0]?.id || "");
+  const [showUserFormPassword, setShowUserFormPassword] = useState(false);
 
   // Form states for new bill
   const [selectedGymForBill, setSelectedGymForBill] = useState(gyms[0]?.id || "");
@@ -84,23 +123,73 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
   const handleCreateGym = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGymName || !newGymCode) return;
-    onAddGym({
-      name: newGymName,
-      code: newGymCode.toUpperCase(),
-      address: newGymAddress || "S/D",
-      phone: newGymPhone || "-",
-      email: newGymEmail || "-",
-      monthlyFee: Number(newGymFee) || 150,
-      billingStatus: "al_dia",
-      totalMembers: 0,
-      plan: newGymPlan,
-    });
+    onAddGym(
+      {
+        name: newGymName,
+        code: newGymCode.toUpperCase(),
+        address: newGymAddress || "S/D",
+        phone: newGymPhone || "-",
+        email: newGymEmail || "-",
+        monthlyFee: Number(newGymFee) || 150,
+        billingStatus: "al_dia",
+        totalMembers: 0,
+        plan: newGymPlan,
+      },
+      newAdminUsername
+        ? {
+            name: newAdminName || `Admin ${newGymName}`,
+            username: newAdminUsername.trim().toLowerCase(),
+            password: newAdminPassword || "Gym123",
+            email: newAdminEmail || newGymEmail || "-",
+          }
+        : undefined
+    );
     setNewGymName("");
     setNewGymCode("");
     setNewGymAddress("");
     setNewGymPhone("");
     setNewGymEmail("");
+    setNewAdminName("");
+    setNewAdminUsername("");
+    setNewAdminPassword("Gym123");
+    setNewAdminEmail("");
     setIsAddGymOpen(false);
+  };
+
+  const handleCreateUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userFormUsername || !userFormPassword || !userFormName) return;
+    const newUser: UserAccount = {
+      id: `usr-${Date.now()}`,
+      name: userFormName,
+      username: userFormUsername.trim().toLowerCase(),
+      password: userFormPassword,
+      email: userFormEmail || `${userFormUsername.toLowerCase()}@gymcore.saas`,
+      role: userFormRole,
+      gymId: userFormRole !== "super_admin" ? userFormGymId : undefined,
+    };
+    onAddUser(newUser);
+    setUserFormName("");
+    setUserFormUsername("");
+    setUserFormPassword("Afm123");
+    setUserFormEmail("");
+    setIsAddUserOpen(false);
+  };
+
+  const handleUpdateUserSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    onEditUser(editingUser);
+    setEditingUser(null);
+  };
+
+  const generateRandomPassword = () => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!#$";
+    let pass = "";
+    for (let i = 0; i < 8; i++) {
+      pass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return pass;
   };
 
   const handleCreateBill = (e: React.FormEvent) => {
@@ -123,6 +212,20 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
       c.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const filteredUsers = users.filter((u) => {
+    const query = searchQuery.toLowerCase();
+    const gym = gyms.find((g) => g.id === u.gymId);
+    const gymName = gym?.name?.toLowerCase() || "";
+    const matchesSearch =
+      u.name.toLowerCase().includes(query) ||
+      u.username.toLowerCase().includes(query) ||
+      u.email.toLowerCase().includes(query) ||
+      gymName.includes(query);
+    const matchesRole = userRoleFilter === "all" || u.role === userRoleFilter;
+    const matchesGym = userGymFilter === "all" || u.gymId === userGymFilter;
+    return matchesSearch && matchesRole && matchesGym;
+  });
+
   return (
     <div className="space-y-6">
       {/* Top Banner & KPI Cards */}
@@ -141,7 +244,15 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              id="superadmin-new-user-btn"
+              onClick={() => setIsAddUserOpen(true)}
+              className="flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-bold px-3 py-2 rounded-lg transition-colors shadow-sm"
+            >
+              <KeyRound className="w-4 h-4 text-emerald-400" />
+              Crear Usuario
+            </button>
             <button
               id="superadmin-new-gym-btn"
               onClick={() => setIsAddGymOpen(true)}
@@ -271,6 +382,19 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
           >
             <Users className="w-4 h-4" />
             Clientes Globales ({clients.length})
+          </button>
+
+          <button
+            id="superadmin-tab-users"
+            onClick={() => setActiveTab("users")}
+            className={`py-3.5 px-4 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 ${
+              activeTab === "users"
+                ? "border-emerald-500 text-emerald-400 bg-slate-900/90"
+                : "border-transparent text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <KeyRound className="w-4 h-4" />
+            Usuarios & Accesos ({users.length})
           </button>
         </div>
 
@@ -531,6 +655,235 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
             </table>
           </div>
         )}
+
+        {/* TAB 4: USUARIOS & ACCESOS */}
+        {activeTab === "users" && (
+          <div className="p-4 space-y-4">
+            {/* Sub-filters & New User CTA */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-950/70 rounded-xl border border-slate-800">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-slate-400 font-semibold flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-emerald-400" /> Filtrar por Rol:
+                </span>
+                <button
+                  onClick={() => setUserRoleFilter("all")}
+                  className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
+                    userRoleFilter === "all"
+                      ? "bg-emerald-500 text-slate-950 font-bold"
+                      : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
+                  }`}
+                >
+                  Todos ({users.length})
+                </button>
+                <button
+                  onClick={() => setUserRoleFilter("super_admin")}
+                  className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
+                    userRoleFilter === "super_admin"
+                      ? "bg-purple-500 text-white font-bold"
+                      : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
+                  }`}
+                >
+                  Super Admin ({users.filter((u) => u.role === "super_admin").length})
+                </button>
+                <button
+                  onClick={() => setUserRoleFilter("gym_admin")}
+                  className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
+                    userRoleFilter === "gym_admin"
+                      ? "bg-emerald-500 text-slate-950 font-bold"
+                      : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
+                  }`}
+                >
+                  Admin Gimnasio ({users.filter((u) => u.role === "gym_admin").length})
+                </button>
+                <button
+                  onClick={() => setUserRoleFilter("client")}
+                  className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
+                    userRoleFilter === "client"
+                      ? "bg-cyan-500 text-slate-950 font-bold"
+                      : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800"
+                  }`}
+                >
+                  Clientes / Atletas ({users.filter((u) => u.role === "client").length})
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <select
+                  value={userGymFilter}
+                  onChange={(e) => setUserGymFilter(e.target.value)}
+                  className="px-2.5 py-1.5 bg-slate-900 border border-slate-800 text-slate-200 text-xs rounded-lg focus:border-emerald-500"
+                >
+                  <option value="all">Todas las Sedes</option>
+                  {gyms.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  onClick={() => setIsAddUserOpen(true)}
+                  className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Nuevo Usuario
+                </button>
+              </div>
+            </div>
+
+            {/* Users Table */}
+            <div className="overflow-x-auto border border-slate-800 rounded-xl">
+              <table className="w-full text-left text-xs text-slate-300">
+                <thead className="bg-slate-950/80 text-slate-400 uppercase font-semibold text-[10px] tracking-wider border-b border-slate-800">
+                  <tr>
+                    <th className="py-3 px-4">Usuario / Cuenta</th>
+                    <th className="py-3 px-4">Rol en Sistema</th>
+                    <th className="py-3 px-4">Sede Asignada</th>
+                    <th className="py-3 px-4">Contraseña (Password)</th>
+                    <th className="py-3 px-4 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 bg-slate-900/40">
+                  {filteredUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-slate-500">
+                        No se encontraron usuarios con los filtros aplicados.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredUsers.map((user) => {
+                      const userGym = gyms.find((g) => g.id === user.gymId);
+                      const isRevealed = !!revealedPasswords[user.id];
+
+                      return (
+                        <tr key={user.id} className="hover:bg-slate-850/40 transition-colors">
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs uppercase border ${
+                                  user.role === "super_admin"
+                                    ? "bg-purple-500/20 text-purple-300 border-purple-500/30"
+                                    : user.role === "gym_admin"
+                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                                    : "bg-cyan-500/20 text-cyan-300 border-cyan-500/30"
+                                }`}
+                              >
+                                {user.username.slice(0, 2)}
+                              </div>
+                              <div>
+                                <div className="font-bold text-white text-sm flex items-center gap-2">
+                                  {user.name}
+                                </div>
+                                <div className="text-[11px] text-emerald-400 font-mono">
+                                  @{user.username}
+                                </div>
+                                <div className="text-[10px] text-slate-500">{user.email}</div>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            {user.role === "super_admin" && (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/30 font-mono">
+                                <Shield className="w-3 h-3 text-purple-400" /> SUPER ADMIN
+                              </span>
+                            )}
+                            {user.role === "gym_admin" && (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-mono">
+                                <Building2 className="w-3 h-3 text-emerald-400" /> ADMIN GIMNASIO
+                              </span>
+                            )}
+                            {user.role === "client" && (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-mono">
+                                <Users className="w-3 h-3 text-cyan-400" /> CLIENTE ATLETA
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            {user.role === "super_admin" ? (
+                              <span className="text-slate-400 font-semibold text-[11px] flex items-center gap-1">
+                                🌐 Toda la plataforma
+                              </span>
+                            ) : userGym ? (
+                              <div>
+                                <div className="font-semibold text-white">{userGym.name}</div>
+                                <div className="text-[10px] text-slate-400 font-mono">
+                                  Cód: {userGym.code}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-slate-500 text-[11px]">Sede no asignada</span>
+                            )}
+                          </td>
+
+                          <td className="py-3.5 px-4 font-mono">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`px-2.5 py-1 rounded-md border text-xs font-semibold ${
+                                  isRevealed
+                                    ? "bg-slate-950 text-emerald-400 border-emerald-500/40"
+                                    : "bg-slate-950 text-slate-400 border-slate-800 tracking-wider"
+                                }`}
+                              >
+                                {isRevealed ? user.password : "••••••••"}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setRevealedPasswords((prev) => ({
+                                    ...prev,
+                                    [user.id]: !prev[user.id],
+                                  }))
+                                }
+                                className="p-1 text-slate-400 hover:text-white transition-colors"
+                                title={isRevealed ? "Ocultar contraseña" : "Ver contraseña"}
+                              >
+                                {isRevealed ? (
+                                  <EyeOff className="w-3.5 h-3.5 text-emerald-400" />
+                                ) : (
+                                  <Eye className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setEditingUser(user);
+                                  setShowEditUserPassword(false);
+                                }}
+                                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded border border-slate-700 transition-colors cursor-pointer"
+                                title="Editar Usuario y Contraseña"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() =>
+                                  setItemToDelete({
+                                    type: "user",
+                                    id: user.id,
+                                    name: `${user.name} (@${user.username})`,
+                                  })
+                                }
+                                className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded border border-rose-500/30 transition-colors cursor-pointer"
+                                title="Eliminar Usuario"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* MODAL: ADD GYM */}
@@ -626,6 +979,74 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
                 />
               </div>
+
+              {/* Sección: Cuenta de Usuario y Contraseña para el Administrador del Gimnasio */}
+              <div className="p-3.5 bg-slate-950/80 rounded-xl border border-emerald-500/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5 font-mono uppercase">
+                    <KeyRound className="w-3.5 h-3.5" /> Cuenta Admin del Gimnasio
+                  </span>
+                  <span className="text-[10px] text-slate-400">Acceso al sistema</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-300 font-bold mb-1">Nombre Administrador</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Marcelo Gómez"
+                      value={newAdminName}
+                      onChange={(e) => setNewAdminName(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-300 font-bold mb-1">Usuario (Login)</label>
+                    <input
+                      type="text"
+                      placeholder={newGymCode ? `admin_${newGymCode.toLowerCase()}` : "admin_gym"}
+                      value={newAdminUsername}
+                      onChange={(e) => setNewAdminUsername(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-emerald-400 font-mono focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-300 font-bold mb-1">Contraseña</label>
+                    <div className="relative">
+                      <input
+                        type={showAdminPassword ? "text" : "password"}
+                        value={newAdminPassword}
+                        onChange={(e) => setNewAdminPassword(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-200 font-mono focus:border-emerald-500 pr-8"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowAdminPassword(!showAdminPassword)}
+                        className="absolute right-2 top-2 text-slate-400 hover:text-white"
+                      >
+                        {showAdminPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-slate-300 font-bold mb-1">Email del Admin</label>
+                    <input
+                      type="email"
+                      placeholder="admin@sede.com"
+                      value={newAdminEmail}
+                      onChange={(e) => setNewAdminEmail(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  Esta cuenta se creará automáticamente con rol <strong className="text-slate-300">Admin Gimnasio</strong> asociada a esta sede.
+                </p>
+              </div>
+
               <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
@@ -1079,6 +1500,296 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
         </div>
       )}
 
+      {/* MODAL: ADD NEW USER */}
+      {isAddUserOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-800 text-slate-200">
+            <div className="p-5 bg-slate-950 border-b border-slate-800 text-white flex justify-between items-center">
+              <h3 className="font-bold text-base flex items-center gap-2 font-mono">
+                <KeyRound className="w-5 h-5 text-emerald-400" /> Crear Nuevo Usuario y Acceso
+              </h3>
+              <button
+                onClick={() => setIsAddUserOpen(false)}
+                className="text-slate-400 hover:text-white text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleCreateUser} className="p-6 space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Rol en Sistema</label>
+                  <select
+                    value={userFormRole}
+                    onChange={(e) => setUserFormRole(e.target.value as UserRole)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500 font-semibold"
+                  >
+                    <option value="gym_admin">Admin Gimnasio</option>
+                    <option value="client">Cliente Atleta</option>
+                    <option value="super_admin">Super Administrador</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Sede Asignada</label>
+                  <select
+                    disabled={userFormRole === "super_admin"}
+                    value={userFormGymId}
+                    onChange={(e) => setUserFormGymId(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500 disabled:opacity-50"
+                  >
+                    {userFormRole === "super_admin" ? (
+                      <option value="">(Plataforma Global)</option>
+                    ) : (
+                      gyms.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Nombre Completo de la Persona</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej: Laura Rossi"
+                  value={userFormName}
+                  onChange={(e) => {
+                    setUserFormName(e.target.value);
+                    if (!userFormUsername) {
+                      const auto = e.target.value
+                        .toLowerCase()
+                        .trim()
+                        .replace(/\s+/g, "_")
+                        .replace(/[^a-z0-9_]/g, "");
+                      setUserFormUsername(auto);
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Usuario (Login / Username)</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="usuario123"
+                    value={userFormUsername}
+                    onChange={(e) => setUserFormUsername(e.target.value.toLowerCase().replace(/\s+/g, ""))}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-emerald-400 font-mono focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Email</label>
+                  <input
+                    type="email"
+                    placeholder="usuario@correo.com"
+                    value={userFormEmail}
+                    onChange={(e) => setUserFormEmail(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-slate-300 font-bold">Contraseña (Password)</label>
+                  <button
+                    type="button"
+                    onClick={() => setUserFormPassword(generateRandomPassword())}
+                    className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1"
+                  >
+                    <RefreshCw className="w-3 h-3" /> Generar Clave Segura
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showUserFormPassword ? "text" : "password"}
+                    required
+                    value={userFormPassword}
+                    onChange={(e) => setUserFormPassword(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono focus:border-emerald-500 pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowUserFormPassword(!showUserFormPassword)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-white"
+                  >
+                    {showUserFormPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  El usuario podrá iniciar sesión inmediatamente con este usuario y contraseña.
+                </p>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddUserOpen(false)}
+                  className="px-4 py-2 border border-slate-800 rounded-lg text-slate-300 font-semibold hover:bg-slate-800 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg font-bold shadow-sm transition-colors flex items-center gap-1.5"
+                >
+                  <KeyRound className="w-4 h-4" /> Crear Cuenta
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT USER */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-800 text-slate-200">
+            <div className="p-5 bg-slate-950 border-b border-slate-800 text-white flex justify-between items-center">
+              <h3 className="font-bold text-base flex items-center gap-2 font-mono">
+                <Edit className="w-5 h-5 text-emerald-400" /> Editar Usuario y Contraseña
+              </h3>
+              <button
+                onClick={() => setEditingUser(null)}
+                className="text-slate-400 hover:text-white text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleUpdateUserSubmit} className="p-6 space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Nombre Completo</label>
+                <input
+                  type="text"
+                  required
+                  value={editingUser.name}
+                  onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Usuario (Username)</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingUser.username}
+                    onChange={(e) =>
+                      setEditingUser({
+                        ...editingUser,
+                        username: e.target.value.toLowerCase().replace(/\s+/g, ""),
+                      })
+                    }
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-emerald-400 font-mono focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={editingUser.email}
+                    onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-slate-300 font-bold">Contraseña (Password)</label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditingUser({ ...editingUser, password: generateRandomPassword() })
+                    }
+                    className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1"
+                  >
+                    <RefreshCw className="w-3 h-3" /> Regenerar Clave
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showEditUserPassword ? "text" : "password"}
+                    required
+                    value={editingUser.password}
+                    onChange={(e) => setEditingUser({ ...editingUser, password: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono focus:border-emerald-500 pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditUserPassword(!showEditUserPassword)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-white"
+                  >
+                    {showEditUserPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Rol</label>
+                  <select
+                    value={editingUser.role}
+                    onChange={(e) =>
+                      setEditingUser({
+                        ...editingUser,
+                        role: e.target.value as UserRole,
+                        gymId: e.target.value === "super_admin" ? undefined : editingUser.gymId,
+                      })
+                    }
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500 font-semibold"
+                  >
+                    <option value="gym_admin">Admin Gimnasio</option>
+                    <option value="client">Cliente Atleta</option>
+                    <option value="super_admin">Super Administrador</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Sede Asignada</label>
+                  <select
+                    disabled={editingUser.role === "super_admin"}
+                    value={editingUser.gymId || ""}
+                    onChange={(e) => setEditingUser({ ...editingUser, gymId: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500 disabled:opacity-50"
+                  >
+                    <option value="">(Sin asignar / Global)</option>
+                    {gyms.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="px-4 py-2 border border-slate-800 rounded-lg text-slate-300 font-semibold hover:bg-slate-800 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg font-bold shadow-sm transition-colors"
+                >
+                  Guardar Cambios
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* CONFIRM DELETE MODAL */}
       {itemToDelete && (
         <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-4">
@@ -1105,6 +1816,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
                 {itemToDelete.type === "gym" && "Nota: Eliminar esta sede también removerá sus registros asociados."}
                 {itemToDelete.type === "bill" && "Nota: Esta factura se eliminará de la base contable."}
                 {itemToDelete.type === "client" && "Nota: Se eliminará al socio y sus historiales."}
+                {itemToDelete.type === "user" && "Nota: Esta cuenta de usuario perderá inmediatamente el acceso al sistema."}
               </p>
               <div className="pt-3 flex justify-end gap-2">
                 <button
@@ -1118,6 +1830,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
                     if (itemToDelete.type === "gym") onDeleteGym(itemToDelete.id);
                     if (itemToDelete.type === "bill") onDeleteGymBilling(itemToDelete.id);
                     if (itemToDelete.type === "client") onDeleteClient(itemToDelete.id);
+                    if (itemToDelete.type === "user") onDeleteUser(itemToDelete.id);
                     setItemToDelete(null);
                   }}
                   className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-bold shadow-sm transition-colors"

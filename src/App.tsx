@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   UserRole,
   UserAccount,
@@ -23,6 +23,7 @@ import {
   INITIAL_EXTRA_PURCHASES,
   INITIAL_TIPS,
 } from "./data/mockData";
+import { SYSTEM_USERS } from "./data/authUsers";
 import { HeaderBar } from "./components/HeaderBar";
 import { SuperAdminView } from "./components/SuperAdmin/SuperAdminView";
 import { GymAdminView } from "./components/GymAdmin/GymAdminView";
@@ -39,6 +40,24 @@ export default function App() {
       return null;
     }
   });
+
+  const [users, setUsers] = useState<UserAccount[]>(() => {
+    try {
+      const saved = localStorage.getItem("gymcore_system_users");
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return SYSTEM_USERS;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("gymcore_system_users", JSON.stringify(users));
+    } catch {
+      // ignore
+    }
+  }, [users]);
 
   const [gyms, setGyms] = useState<Gym[]>(INITIAL_GYMS);
   const [selectedGymId, setSelectedGymId] = useState<string>(() => {
@@ -108,14 +127,48 @@ export default function App() {
   const currentGym = gyms.find((g) => g.id === selectedGymId) || gyms[0];
   const currentClient = clients.find((c) => c.id === selectedClientId) || clients[0];
 
+  // Handlers for User Management
+  const handleAddUser = (newUser: UserAccount) => {
+    setUsers((prev) => [newUser, ...prev]);
+  };
+
+  const handleEditUser = (updatedUser: UserAccount) => {
+    setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
+    if (currentUser && currentUser.id === updatedUser.id) {
+      setCurrentUser(updatedUser);
+      localStorage.setItem("gymcore_active_user", JSON.stringify(updatedUser));
+    }
+  };
+
+  const handleDeleteUser = (userId: string) => {
+    setUsers((prev) => prev.filter((u) => u.id !== userId));
+  };
+
   // Handlers for Super Admin
-  const handleAddGym = (newGymData: Omit<Gym, "id" | "createdAt">) => {
+  const handleAddGym = (
+    newGymData: Omit<Gym, "id" | "createdAt">,
+    adminCredentials?: { name: string; username: string; password: string; email: string }
+  ) => {
+    const gymId = `gym-${Date.now()}`;
     const newGym: Gym = {
       ...newGymData,
-      id: `gym-${Date.now()}`,
+      id: gymId,
       createdAt: new Date().toISOString().split("T")[0],
     };
     setGyms((prev) => [...prev, newGym]);
+
+    if (adminCredentials && adminCredentials.username && adminCredentials.password) {
+      const newAdminUser: UserAccount = {
+        id: `usr-admin-${Date.now()}`,
+        username: adminCredentials.username.trim().toLowerCase(),
+        password: adminCredentials.password,
+        name: adminCredentials.name || `Admin ${newGym.name}`,
+        role: "gym_admin",
+        email: adminCredentials.email || newGym.email,
+        gymId: gymId,
+      };
+      setUsers((prev) => [newAdminUser, ...prev]);
+    }
   };
 
   const handleEditGym = (updatedGym: Gym) => {
@@ -134,6 +187,7 @@ export default function App() {
     setClients((prev) => prev.filter((c) => c.gymId !== gymId));
     setRoutines((prev) => prev.filter((r) => r.gymId !== gymId));
     setTips((prev) => prev.filter((t) => t.gymId !== gymId));
+    setUsers((prev) => prev.filter((u) => u.gymId !== gymId));
     if (selectedGymId === gymId) {
       const remaining = gyms.filter((g) => g.id !== gymId);
       if (remaining.length > 0) setSelectedGymId(remaining[0].id);
@@ -183,10 +237,14 @@ export default function App() {
   };
 
   // Handlers for Gym Admin & Global Clients
-  const handleAddClient = (newClientData: Omit<Client, "id" | "joinDate">) => {
+  const handleAddClient = (
+    newClientData: Omit<Client, "id" | "joinDate">,
+    userCredentials?: { username: string; password: string }
+  ) => {
+    const clientId = `client-${Date.now()}`;
     const newClient: Client = {
       ...newClientData,
-      id: `client-${Date.now()}`,
+      id: clientId,
       joinDate: new Date().toISOString().split("T")[0],
     };
     setClients((prev) => [newClient, ...prev]);
@@ -198,11 +256,32 @@ export default function App() {
           : g
       )
     );
+
+    if (userCredentials && userCredentials.username && userCredentials.password) {
+      const newClientUser: UserAccount = {
+        id: `usr-client-${Date.now()}`,
+        username: userCredentials.username.trim().toLowerCase(),
+        password: userCredentials.password,
+        name: newClient.name,
+        role: "client",
+        email: newClient.email,
+        gymId: newClient.gymId,
+        clientId: clientId,
+      };
+      setUsers((prev) => [newClientUser, ...prev]);
+    }
   };
 
   const handleEditClient = (updatedClient: Client) => {
     setClients((prev) =>
       prev.map((c) => (c.id === updatedClient.id ? updatedClient : c))
+    );
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.clientId === updatedClient.id
+          ? { ...u, name: updatedClient.name, email: updatedClient.email }
+          : u
+      )
     );
   };
 
@@ -221,6 +300,7 @@ export default function App() {
     setPayments((prev) => prev.filter((p) => p.clientId !== clientId));
     setExtraPurchases((prev) => prev.filter((p) => p.clientId !== clientId));
     setCompletedWorkouts((prev) => prev.filter((w) => w.clientId !== clientId));
+    setUsers((prev) => prev.filter((u) => u.clientId !== clientId));
     if (selectedClientId === clientId) {
       const remaining = clients.filter((c) => c.id !== clientId);
       if (remaining.length > 0) setSelectedClientId(remaining[0].id);
@@ -228,22 +308,149 @@ export default function App() {
   };
 
   const handleAddRoutine = (routineData: Omit<Routine, "id">) => {
+    const routineId = `rot-${Date.now()}`;
     const newRoutine: Routine = {
       ...routineData,
-      id: `rot-${Date.now()}`,
+      id: routineId,
     };
     setRoutines((prev) => [...prev, newRoutine]);
+
+    // If routine is assigned to specific clients, sync them
+    if (newRoutine.assignedClientIds && newRoutine.assignedClientIds.length > 0) {
+      setClients((prev) =>
+        prev.map((c) => {
+          if (newRoutine.assignedClientIds?.includes(c.id)) {
+            const currentRots = c.assignedRoutineIds || (c.assignedRoutineId ? [c.assignedRoutineId] : []);
+            if (!currentRots.includes(routineId)) {
+              const updatedRots = [...currentRots, routineId];
+              return {
+                ...c,
+                assignedRoutineId: updatedRots[0],
+                assignedRoutineIds: updatedRots,
+              };
+            }
+          }
+          return c;
+        })
+      );
+    }
   };
 
   const handleEditRoutine = (updatedRoutine: Routine) => {
     setRoutines((prev) =>
       prev.map((r) => (r.id === updatedRoutine.id ? updatedRoutine : r))
     );
+
+    // Synchronize client assignments
+    const targetRoutineId = updatedRoutine.id;
+    const assignedIds = updatedRoutine.assignedClientIds || [];
+
+    setClients((prev) =>
+      prev.map((c) => {
+        if (c.gymId !== updatedRoutine.gymId) return c;
+        const currentRots = c.assignedRoutineIds || (c.assignedRoutineId ? [c.assignedRoutineId] : []);
+        const shouldHave = assignedIds.includes(c.id);
+
+        if (shouldHave && !currentRots.includes(targetRoutineId)) {
+          const updatedRots = [...currentRots, targetRoutineId];
+          return {
+            ...c,
+            assignedRoutineId: updatedRots[0],
+            assignedRoutineIds: updatedRots,
+          };
+        } else if (!shouldHave && currentRots.includes(targetRoutineId)) {
+          const updatedRots = currentRots.filter((id) => id !== targetRoutineId);
+          return {
+            ...c,
+            assignedRoutineId: updatedRots[0] || undefined,
+            assignedRoutineIds: updatedRots,
+          };
+        }
+        return c;
+      })
+    );
   };
 
   const handleDeleteRoutine = (routineId: string) => {
     setRoutines((prev) => prev.filter((r) => r.id !== routineId));
     setCompletedWorkouts((prev) => prev.filter((w) => w.routineId !== routineId));
+    // Clean up client assignments
+    setClients((prev) =>
+      prev.map((c) => {
+        const currentRots = c.assignedRoutineIds || (c.assignedRoutineId ? [c.assignedRoutineId] : []);
+        if (currentRots.includes(routineId)) {
+          const updatedRots = currentRots.filter((id) => id !== routineId);
+          return {
+            ...c,
+            assignedRoutineId: updatedRots[0] || undefined,
+            assignedRoutineIds: updatedRots,
+          };
+        }
+        return c;
+      })
+    );
+  };
+
+  const handleAssignRoutinesToClient = (clientId: string, routineIds: string[]) => {
+    setClients((prev) =>
+      prev.map((c) =>
+        c.id === clientId
+          ? {
+              ...c,
+              assignedRoutineId: routineIds[0] || undefined,
+              assignedRoutineIds: routineIds,
+            }
+          : c
+      )
+    );
+
+    // Sync routines' assignedClientIds
+    setRoutines((prev) =>
+      prev.map((r) => {
+        const shouldHave = routineIds.includes(r.id);
+        const currentClients = r.assignedClientIds || [];
+        if (shouldHave && !currentClients.includes(clientId)) {
+          return { ...r, assignedClientIds: [...currentClients, clientId] };
+        } else if (!shouldHave && currentClients.includes(clientId)) {
+          return { ...r, assignedClientIds: currentClients.filter((id) => id !== clientId) };
+        }
+        return r;
+      })
+    );
+  };
+
+  const handleAssignClientsToRoutine = (routineId: string, clientIds: string[]) => {
+    setRoutines((prev) =>
+      prev.map((r) =>
+        r.id === routineId
+          ? { ...r, assignedClientIds: clientIds }
+          : r
+      )
+    );
+
+    // Sync clients' assignedRoutineIds
+    setClients((prev) =>
+      prev.map((c) => {
+        const shouldHave = clientIds.includes(c.id);
+        const currentRots = c.assignedRoutineIds || (c.assignedRoutineId ? [c.assignedRoutineId] : []);
+        if (shouldHave && !currentRots.includes(routineId)) {
+          const updatedRots = [...currentRots, routineId];
+          return {
+            ...c,
+            assignedRoutineId: updatedRots[0],
+            assignedRoutineIds: updatedRots,
+          };
+        } else if (!shouldHave && currentRots.includes(routineId)) {
+          const updatedRots = currentRots.filter((id) => id !== routineId);
+          return {
+            ...c,
+            assignedRoutineId: updatedRots[0] || undefined,
+            assignedRoutineIds: updatedRots,
+          };
+        }
+        return c;
+      })
+    );
   };
 
   const handleAddPayment = (paymentData: Omit<Payment, "id" | "date">) => {
@@ -394,6 +601,7 @@ export default function App() {
         <LoginView
           onLogin={handleLogin}
           onOpenArchitecture={() => setIsArchitectureModalOpen(true)}
+          users={users}
         />
         <ArchitectureModal
           isOpen={isArchitectureModalOpen}
@@ -440,6 +648,10 @@ export default function App() {
             clients={clients}
             onEditClient={handleEditClient}
             onDeleteClient={handleDeleteClient}
+            users={users}
+            onAddUser={handleAddUser}
+            onEditUser={handleEditUser}
+            onDeleteUser={handleDeleteUser}
           />
         )}
 
@@ -470,6 +682,12 @@ export default function App() {
             onAddTip={handleAddTip}
             onEditTip={handleEditTip}
             onDeleteTip={handleDeleteTip}
+            users={users.filter((u) => u.gymId === currentGym.id)}
+            onAddUser={handleAddUser}
+            onEditUser={handleEditUser}
+            onDeleteUser={handleDeleteUser}
+            onAssignRoutinesToClient={handleAssignRoutinesToClient}
+            onAssignClientsToRoutine={handleAssignClientsToRoutine}
           />
         )}
 

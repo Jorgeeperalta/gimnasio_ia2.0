@@ -109,6 +109,8 @@ export const INITIAL_CLIENTS: Client[] = [
     membershipPlan: "Plan Mensual Ilimitado",
     monthlyFee: 45,
     debtAmount: 45, // Debe la mensualidad actual
+    assignedRoutineId: "rot-1",
+    assignedRoutineIds: ["rot-1", "rot-3"],
     status: "activo",
     joinDate: "2025-06-10",
   },
@@ -122,6 +124,8 @@ export const INITIAL_CLIENTS: Client[] = [
     membershipPlan: "Plan Trimestral VIP",
     monthlyFee: 120,
     debtAmount: 0, // Al día
+    assignedRoutineId: "rot-2",
+    assignedRoutineIds: ["rot-2"],
     status: "activo",
     joinDate: "2025-02-14",
   },
@@ -176,6 +180,7 @@ export const INITIAL_ROUTINES: Routine[] = [
     estimatedMinutes: 55,
     level: "Intermedio",
     notes: "Calentar 5 min con manguito rotador antes del press plano.",
+    assignedClientIds: ["client-1"],
     exercises: [
       {
         id: "ex-1",
@@ -233,6 +238,7 @@ export const INITIAL_ROUTINES: Routine[] = [
     estimatedMinutes: 60,
     level: "Avanzado",
     notes: "Cuidar la retracción escapular y evitar balanceo en el remo.",
+    assignedClientIds: ["client-2"],
     exercises: [
       {
         id: "ex-6",
@@ -290,6 +296,7 @@ export const INITIAL_ROUTINES: Routine[] = [
     estimatedMinutes: 65,
     level: "Avanzado",
     notes: "Hidratación constante y calentamiento de rodillas y caderas.",
+    assignedClientIds: ["client-1"],
     exercises: [
       {
         id: "ex-11",
