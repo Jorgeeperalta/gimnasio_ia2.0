@@ -8,6 +8,23 @@ CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 USE gym_system_multigym;
 
+-- 0. TABLA USUARIOS & AUTENTICACIÓN (RBAC)
+CREATE TABLE IF NOT EXISTS usuarios (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(60) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  nombre VARCHAR(120) NOT NULL,
+  email VARCHAR(120) NOT NULL,
+  rol ENUM('super_admin', 'gym_admin', 'client') NOT NULL,
+  gimnasio_id INT NULL,
+  cliente_id INT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- Super Admin: usuario jorge50 / clave Afm123
+INSERT INTO usuarios (username, password_hash, nombre, email, rol)
+VALUES ('jorge50', '$2y$10$...Afm123...', 'Jorge', 'jorge50@gymcore.saas', 'super_admin');
+
 -- 1. TABLA GIMNASIOS (Multi-tenant)
 CREATE TABLE IF NOT EXISTS gimnasios (
   id INT AUTO_INCREMENT PRIMARY KEY,

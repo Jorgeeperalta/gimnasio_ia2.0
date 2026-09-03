@@ -1,5 +1,17 @@
 export type UserRole = "super_admin" | "gym_admin" | "client";
 
+export interface UserAccount {
+  id: string;
+  username: string;
+  password: string;
+  name: string;
+  role: UserRole;
+  email: string;
+  gymId?: string;
+  clientId?: string;
+  avatarUrl?: string;
+}
+
 export interface Gym {
   id: string;
   name: string;

@@ -31,32 +31,56 @@ interface GymAdminViewProps {
   currentGym: Gym;
   clients: Client[];
   onAddClient: (client: Omit<Client, "id" | "joinDate">) => void;
+  onEditClient: (client: Client) => void;
+  onDeleteClient: (clientId: string) => void;
   routines: Routine[];
   onAddRoutine: (routine: Omit<Routine, "id">) => void;
+  onEditRoutine: (routine: Routine) => void;
+  onDeleteRoutine: (routineId: string) => void;
   payments: Payment[];
   onAddPayment: (payment: Omit<Payment, "id" | "date">) => void;
+  onEditPayment: (payment: Payment) => void;
+  onDeletePayment: (paymentId: string) => void;
   extraItems: ExtraItem[];
+  onAddExtraItem: (item: Omit<ExtraItem, "id">) => void;
+  onEditExtraItem: (item: ExtraItem) => void;
+  onDeleteExtraItem: (itemId: string) => void;
   extraPurchases: ClientExtraPurchase[];
   onAddExtraPurchase: (purchase: Omit<ClientExtraPurchase, "id" | "date">) => void;
-  onAddExtraItem: (item: Omit<ExtraItem, "id">) => void;
+  onEditExtraPurchase: (purchase: ClientExtraPurchase) => void;
+  onDeleteExtraPurchase: (purchaseId: string) => void;
   tips: GymTip[];
   onAddTip: (tip: Omit<GymTip, "id" | "date">) => void;
+  onEditTip: (tip: GymTip) => void;
+  onDeleteTip: (tipId: string) => void;
 }
 
 export const GymAdminView: React.FC<GymAdminViewProps> = ({
   currentGym,
   clients,
   onAddClient,
+  onEditClient,
+  onDeleteClient,
   routines,
   onAddRoutine,
+  onEditRoutine,
+  onDeleteRoutine,
   payments,
   onAddPayment,
+  onEditPayment,
+  onDeletePayment,
   extraItems,
+  onAddExtraItem,
+  onEditExtraItem,
+  onDeleteExtraItem,
   extraPurchases,
   onAddExtraPurchase,
-  onAddExtraItem,
+  onEditExtraPurchase,
+  onDeleteExtraPurchase,
   tips,
   onAddTip,
+  onEditTip,
+  onDeleteTip,
 }) => {
   const [activeTab, setActiveTab] = useState<"clientes" | "rutinas" | "pagos" | "extras" | "tips">("clientes");
 
@@ -74,6 +98,21 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
   const [isExtraSaleModalOpen, setIsExtraSaleModalOpen] = useState(false);
   const [isNewExtraItemModalOpen, setIsNewExtraItemModalOpen] = useState(false);
   const [isTipModalOpen, setIsTipModalOpen] = useState(false);
+
+  // Edit states
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+  const [editingExtraItem, setEditingExtraItem] = useState<ExtraItem | null>(null);
+  const [editingExtraPurchase, setEditingExtraPurchase] = useState<ClientExtraPurchase | null>(null);
+  const [editingTip, setEditingTip] = useState<GymTip | null>(null);
+
+  // Delete confirmation state
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    type: "client" | "routine" | "payment" | "extraItem" | "extraPurchase" | "tip";
+    id: string;
+    name: string;
+  } | null>(null);
 
   // Form states: New Client
   const [clientName, setClientName] = useState("");
@@ -446,16 +485,32 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          onClick={() => {
-                            setPayClientId(client.id);
-                            setPayAmount(client.debtAmount > 0 ? client.debtAmount : client.monthlyFee);
-                            setIsPaymentModalOpen(true);
-                          }}
-                          className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] px-3 py-1 rounded-lg transition-colors shadow-sm"
-                        >
-                          Cobrar
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => {
+                              setPayClientId(client.id);
+                              setPayAmount(client.debtAmount > 0 ? client.debtAmount : client.monthlyFee);
+                              setIsPaymentModalOpen(true);
+                            }}
+                            className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] px-2.5 py-1 rounded-lg transition-colors shadow-sm cursor-pointer"
+                          >
+                            Cobrar
+                          </button>
+                          <button
+                            onClick={() => setEditingClient(client)}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded border border-slate-700 transition-colors cursor-pointer"
+                            title="Editar Cliente"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm({ type: "client", id: client.id, name: client.name })}
+                            className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded border border-rose-500/30 transition-colors cursor-pointer"
+                            title="Eliminar Cliente"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -489,44 +544,61 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
               {gymRoutines.map((routine) => (
                 <div
                   key={routine.id}
-                  className="bg-slate-950/80 rounded-xl p-4 border border-slate-800 hover:border-emerald-500/40 transition-all shadow-sm"
+                  className="bg-slate-950/80 rounded-xl p-4 border border-slate-800 hover:border-emerald-500/40 transition-all shadow-sm flex flex-col justify-between"
                 >
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-mono">
-                      {routine.day}
-                    </span>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
-                      {routine.muscleGroup}
-                    </span>
-                  </div>
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-mono">
+                        {routine.day}
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                        {routine.muscleGroup}
+                      </span>
+                    </div>
 
-                  <h3 className="font-bold text-white text-sm mb-1">{routine.name}</h3>
-                  <p className="text-[11px] text-slate-400 mb-3 flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5 text-emerald-400" /> {routine.estimatedMinutes} min • Nivel: {routine.level}
-                  </p>
-
-                  <div className="space-y-1.5 bg-slate-900/90 p-3 rounded-lg border border-slate-800 mb-3 text-xs">
-                    <p className="font-bold text-[10px] uppercase tracking-wider text-slate-500 font-mono">
-                      Ejercicios ({routine.exercises.length}):
+                    <h3 className="font-bold text-white text-sm mb-1">{routine.name}</h3>
+                    <p className="text-[11px] text-slate-400 mb-3 flex items-center gap-2">
+                      <Clock className="w-3.5 h-3.5 text-emerald-400" /> {routine.estimatedMinutes} min • Nivel: {routine.level}
                     </p>
-                    {routine.exercises.slice(0, 4).map((ex, i) => (
-                      <div key={ex.id || i} className="flex justify-between items-center text-slate-300 text-[11px]">
-                        <span className="font-medium truncate max-w-[170px]">• {ex.name}</span>
-                        <span className="font-mono text-emerald-400 text-[10px] font-semibold">{ex.sets}x{ex.reps}</span>
-                      </div>
-                    ))}
-                    {routine.exercises.length > 4 && (
-                      <p className="text-[10px] text-emerald-400 font-semibold pt-1 font-mono">
-                        + {routine.exercises.length - 4} ejercicios más
+
+                    <div className="space-y-1.5 bg-slate-900/90 p-3 rounded-lg border border-slate-800 mb-3 text-xs">
+                      <p className="font-bold text-[10px] uppercase tracking-wider text-slate-500 font-mono">
+                        Ejercicios ({routine.exercises.length}):
+                      </p>
+                      {routine.exercises.slice(0, 4).map((ex, i) => (
+                        <div key={ex.id || i} className="flex justify-between items-center text-slate-300 text-[11px]">
+                          <span className="font-medium truncate max-w-[170px]">• {ex.name}</span>
+                          <span className="font-mono text-emerald-400 text-[10px] font-semibold">{ex.sets}x{ex.reps}</span>
+                        </div>
+                      ))}
+                      {routine.exercises.length > 4 && (
+                        <p className="text-[10px] text-emerald-400 font-semibold pt-1 font-mono">
+                          + {routine.exercises.length - 4} ejercicios más
+                        </p>
+                      )}
+                    </div>
+
+                    {routine.notes && (
+                      <p className="text-[11px] text-slate-400 italic bg-slate-900/60 p-2 rounded border border-slate-800">
+                        💡 {routine.notes}
                       </p>
                     )}
                   </div>
 
-                  {routine.notes && (
-                    <p className="text-[11px] text-slate-400 italic bg-slate-900/60 p-2 rounded border border-slate-800">
-                      💡 {routine.notes}
-                    </p>
-                  )}
+                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800/80 mt-3">
+                    <button
+                      onClick={() => setEditingRoutine(routine)}
+                      className="flex items-center gap-1 text-[11px] font-semibold text-slate-300 hover:text-white bg-slate-850 hover:bg-slate-750 px-2.5 py-1 rounded border border-slate-700 transition-colors cursor-pointer"
+                    >
+                      <Edit className="w-3 h-3" /> Editar
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirm({ type: "routine", id: routine.id, name: routine.name })}
+                      className="flex items-center gap-1 text-[11px] font-semibold text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 px-2.5 py-1 rounded border border-rose-500/30 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-3 h-3" /> Eliminar
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -563,6 +635,7 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
                     <th className="py-3 px-4">Método</th>
                     <th className="py-3 px-4">Monto</th>
                     <th className="py-3 px-4">Estado</th>
+                    <th className="py-3 px-4 text-right">Acción</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
@@ -590,6 +663,24 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
                           <CheckCircle2 className="w-3 h-3" /> Completado
                         </span>
                       </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => setEditingPayment(pay)}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded border border-slate-700 transition-colors cursor-pointer"
+                            title="Editar Pago"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm({ type: "payment", id: pay.id, name: `${pay.concept} - ${pay.clientName} ($${pay.amount} USD)` })}
+                            className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded border border-rose-500/30 transition-colors cursor-pointer"
+                            title="Eliminar Pago"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -613,13 +704,13 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
               <div className="flex gap-2">
                 <button
                   onClick={() => setIsNewExtraItemModalOpen(true)}
-                  className="flex items-center gap-1 bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-700"
+                  className="flex items-center gap-1 bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-700 cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5 text-emerald-400" /> Agregar Producto
                 </button>
                 <button
                   onClick={() => setIsExtraSaleModalOpen(true)}
-                  className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm"
+                  className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm cursor-pointer"
                 >
                   <Coffee className="w-3.5 h-3.5" /> Registrar Consumo a Cliente
                 </button>
@@ -637,17 +728,33 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
                     <h4 className="font-bold text-white text-xs mt-1.5">{item.name}</h4>
                     <p className="text-[11px] text-slate-400">Stock: {item.stock} unidades</p>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right flex flex-col items-end gap-1">
                     <p className="text-base font-bold font-mono text-emerald-400">${item.price} USD</p>
                     <button
                       onClick={() => {
                         setSaleItemId(item.id);
                         setIsExtraSaleModalOpen(true);
                       }}
-                      className="mt-1 text-[10px] font-bold text-emerald-400 hover:underline"
+                      className="text-[10px] font-bold text-emerald-400 hover:underline cursor-pointer"
                     >
                       Vender a Cliente →
                     </button>
+                    <div className="flex items-center gap-1 pt-1">
+                      <button
+                        onClick={() => setEditingExtraItem(item)}
+                        className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded border border-slate-700 transition-colors cursor-pointer"
+                        title="Editar Producto"
+                      >
+                        <Edit className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => setDeleteConfirm({ type: "extraItem", id: item.id, name: item.name })}
+                        className="p-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded border border-rose-500/30 transition-colors cursor-pointer"
+                        title="Eliminar Producto"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -668,6 +775,7 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
                       <th className="py-2.5 px-3">Cant.</th>
                       <th className="py-2.5 px-3">Total</th>
                       <th className="py-2.5 px-3">Estado de Pago</th>
+                      <th className="py-2.5 px-3 text-right">Acción</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
@@ -688,6 +796,24 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
                               Cargado a Deuda
                             </span>
                           )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => setEditingExtraPurchase(purchase)}
+                              className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded border border-slate-700 transition-colors cursor-pointer"
+                              title="Editar Consumo"
+                            >
+                              <Edit className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirm({ type: "extraPurchase", id: purchase.id, name: `${purchase.itemName} (${purchase.clientName})` })}
+                              className="p-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded border border-rose-500/30 transition-colors cursor-pointer"
+                              title="Eliminar Consumo"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -712,7 +838,7 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
               </div>
               <button
                 onClick={() => setIsTipModalOpen(true)}
-                className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg self-start sm:self-auto shadow-sm"
+                className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg self-start sm:self-auto shadow-sm cursor-pointer"
               >
                 <Plus className="w-4 h-4" /> Publicar Tip
               </button>
@@ -720,16 +846,36 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {gymTips.map((tip) => (
-                <div key={tip.id} className="bg-slate-950/80 p-4 rounded-xl border border-slate-800">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 font-mono">
-                      {tip.category}
-                    </span>
-                    <span className="text-[10px] text-slate-500 font-mono">{tip.date}</span>
+                <div key={tip.id} className="bg-slate-950/80 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 font-mono">
+                        {tip.category}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-mono">{tip.date}</span>
+                    </div>
+                    <h4 className="font-bold text-white text-sm mb-1">{tip.title}</h4>
+                    <p className="text-xs text-slate-300 mb-2 leading-relaxed">{tip.content}</p>
                   </div>
-                  <h4 className="font-bold text-white text-sm mb-1">{tip.title}</h4>
-                  <p className="text-xs text-slate-300 mb-2 leading-relaxed">{tip.content}</p>
-                  <p className="text-[10px] font-semibold text-slate-400">Por: {tip.author}</p>
+                  <div className="flex items-center justify-between pt-3 border-t border-slate-800/80 mt-2">
+                    <p className="text-[10px] font-semibold text-slate-400">Por: {tip.author}</p>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setEditingTip(tip)}
+                        className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded border border-slate-700 transition-colors cursor-pointer"
+                        title="Editar Tip"
+                      >
+                        <Edit className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => setDeleteConfirm({ type: "tip", id: tip.id, name: tip.title })}
+                        className="p-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded border border-rose-500/30 transition-colors cursor-pointer"
+                        title="Eliminar Tip"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1244,6 +1390,641 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
                 <button type="submit" className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg font-bold shadow-sm">Publicar para Clientes</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT CLIENT */}
+      {editingClient && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-800 text-slate-200">
+            <div className="p-5 bg-slate-950 border-b border-slate-800 text-white flex justify-between items-center">
+              <h3 className="font-bold text-base flex items-center gap-2 font-mono">
+                <Edit className="w-5 h-5 text-emerald-400" /> Editar Cliente ({editingClient.name})
+              </h3>
+              <button onClick={() => setEditingClient(null)} className="text-slate-400 hover:text-white font-bold text-lg">✕</button>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                onEditClient(editingClient);
+                setEditingClient(null);
+              }}
+              className="p-6 space-y-4 text-xs"
+            >
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Nombre Completo</label>
+                <input
+                  type="text"
+                  required
+                  value={editingClient.name}
+                  onChange={(e) => setEditingClient({ ...editingClient, name: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Email</label>
+                  <input
+                    type="email"
+                    required
+                    value={editingClient.email}
+                    onChange={(e) => setEditingClient({ ...editingClient, email: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Teléfono</label>
+                  <input
+                    type="text"
+                    value={editingClient.phone}
+                    onChange={(e) => setEditingClient({ ...editingClient, phone: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Plan de Membresía</label>
+                  <input
+                    type="text"
+                    value={editingClient.membershipPlan}
+                    onChange={(e) => setEditingClient({ ...editingClient, membershipPlan: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Cuota ($ USD/mes)</label>
+                  <input
+                    type="number"
+                    value={editingClient.monthlyFee}
+                    onChange={(e) => setEditingClient({ ...editingClient, monthlyFee: Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono text-emerald-400 focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Deuda Pendiente ($ USD)</label>
+                  <input
+                    type="number"
+                    value={editingClient.debtAmount}
+                    onChange={(e) => setEditingClient({ ...editingClient, debtAmount: Math.max(0, Number(e.target.value)) })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono text-rose-400 focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Estado</label>
+                  <select
+                    value={editingClient.status}
+                    onChange={(e) => setEditingClient({ ...editingClient, status: e.target.value as any })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                  >
+                    <option value="activo">Activo</option>
+                    <option value="inactivo">Inactivo</option>
+                  </select>
+                </div>
+              </div>
+              <div className="pt-2 flex justify-end gap-2">
+                <button type="button" onClick={() => setEditingClient(null)} className="px-4 py-2 border border-slate-800 rounded-lg text-slate-300 font-semibold hover:bg-slate-800">Cancelar</button>
+                <button type="submit" className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg font-bold shadow-sm">Guardar Cambios</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT ROUTINE */}
+      {editingRoutine && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden border border-slate-800 text-slate-200 max-h-[90vh] flex flex-col">
+            <div className="p-5 bg-slate-950 border-b border-slate-800 text-white flex justify-between items-center shrink-0">
+              <h3 className="font-bold text-base flex items-center gap-2 font-mono">
+                <Edit className="w-5 h-5 text-emerald-400" /> Editar Rutina ({editingRoutine.name})
+              </h3>
+              <button onClick={() => setEditingRoutine(null)} className="text-slate-400 hover:text-white font-bold text-lg">✕</button>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                onEditRoutine(editingRoutine);
+                setEditingRoutine(null);
+              }}
+              className="p-6 space-y-4 text-xs overflow-y-auto"
+            >
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Nombre de la Rutina</label>
+                <input
+                  type="text"
+                  required
+                  value={editingRoutine.name}
+                  onChange={(e) => setEditingRoutine({ ...editingRoutine, name: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Día Asignado</label>
+                  <select
+                    value={editingRoutine.day}
+                    onChange={(e) => setEditingRoutine({ ...editingRoutine, day: e.target.value as any })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                  >
+                    {["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"].map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Grupo Muscular</label>
+                  <select
+                    value={editingRoutine.muscleGroup}
+                    onChange={(e) => setEditingRoutine({ ...editingRoutine, muscleGroup: e.target.value as any })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                  >
+                    {["Pecho", "Espalda", "Piernas", "Hombros", "Brazos", "Abdomen", "Cardio / Full Body"].map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Duración Estimada (min)</label>
+                  <input
+                    type="number"
+                    value={editingRoutine.estimatedMinutes}
+                    onChange={(e) => setEditingRoutine({ ...editingRoutine, estimatedMinutes: Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono text-emerald-400 focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Nivel</label>
+                  <select
+                    value={editingRoutine.level}
+                    onChange={(e) => setEditingRoutine({ ...editingRoutine, level: e.target.value as any })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                  >
+                    <option value="Principiante">Principiante</option>
+                    <option value="Intermedio">Intermedio</option>
+                    <option value="Avanzado">Avanzado</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Notas / Instrucciones</label>
+                <textarea
+                  rows={2}
+                  value={editingRoutine.notes || ""}
+                  onChange={(e) => setEditingRoutine({ ...editingRoutine, notes: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                />
+              </div>
+
+              {/* Exercises List in Routine */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-slate-300 font-bold">Ejercicios ({editingRoutine.exercises.length})</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newEx = {
+                        id: `ex-${Date.now()}`,
+                        name: "Nuevo Ejercicio",
+                        sets: 3,
+                        reps: "10-12",
+                        restSeconds: 60,
+                      };
+                      setEditingRoutine({
+                        ...editingRoutine,
+                        exercises: [...editingRoutine.exercises, newEx],
+                      });
+                    }}
+                    className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold"
+                  >
+                    + Agregar Ejercicio
+                  </button>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {editingRoutine.exercises.map((ex, idx) => (
+                    <div key={ex.id || idx} className="bg-slate-950 p-2.5 rounded border border-slate-800 flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={ex.name}
+                        onChange={(e) => {
+                          const updated = [...editingRoutine.exercises];
+                          updated[idx] = { ...updated[idx], name: e.target.value };
+                          setEditingRoutine({ ...editingRoutine, exercises: updated });
+                        }}
+                        className="flex-1 px-2 py-1 bg-slate-900 border border-slate-700 rounded text-xs text-white"
+                      />
+                      <input
+                        type="number"
+                        title="Series"
+                        value={ex.sets}
+                        onChange={(e) => {
+                          const updated = [...editingRoutine.exercises];
+                          updated[idx] = { ...updated[idx], sets: Number(e.target.value) };
+                          setEditingRoutine({ ...editingRoutine, exercises: updated });
+                        }}
+                        className="w-12 px-1.5 py-1 bg-slate-900 border border-slate-700 rounded text-xs text-emerald-400 font-mono text-center"
+                      />
+                      <span className="text-slate-500 font-mono">x</span>
+                      <input
+                        type="text"
+                        title="Repeticiones"
+                        value={ex.reps}
+                        onChange={(e) => {
+                          const updated = [...editingRoutine.exercises];
+                          updated[idx] = { ...updated[idx], reps: e.target.value };
+                          setEditingRoutine({ ...editingRoutine, exercises: updated });
+                        }}
+                        className="w-16 px-1.5 py-1 bg-slate-900 border border-slate-700 rounded text-xs text-emerald-400 font-mono text-center"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingRoutine({
+                            ...editingRoutine,
+                            exercises: editingRoutine.exercises.filter((_, i) => i !== idx),
+                          });
+                        }}
+                        className="text-rose-400 hover:text-rose-300 p-1"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button type="button" onClick={() => setEditingRoutine(null)} className="px-4 py-2 border border-slate-800 rounded-lg text-slate-300 font-semibold hover:bg-slate-800">Cancelar</button>
+                <button type="submit" className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg font-bold shadow-sm">Guardar Cambios</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT PAYMENT */}
+      {editingPayment && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-800 text-slate-200">
+            <div className="p-5 bg-slate-950 border-b border-slate-800 text-white flex justify-between items-center">
+              <h3 className="font-bold text-base flex items-center gap-2 font-mono">
+                <Edit className="w-5 h-5 text-emerald-400" /> Editar Pago / Recibo
+              </h3>
+              <button onClick={() => setEditingPayment(null)} className="text-slate-400 hover:text-white font-bold text-lg">✕</button>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                onEditPayment(editingPayment);
+                setEditingPayment(null);
+              }}
+              className="p-6 space-y-4 text-xs"
+            >
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Cliente</label>
+                <input
+                  type="text"
+                  disabled
+                  value={editingPayment.clientName}
+                  className="w-full px-3 py-2 bg-slate-950/50 border border-slate-800 rounded-lg text-slate-400 cursor-not-allowed"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Fecha</label>
+                  <input
+                    type="text"
+                    value={editingPayment.date}
+                    onChange={(e) => setEditingPayment({ ...editingPayment, date: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Monto ($ USD)</label>
+                  <input
+                    type="number"
+                    required
+                    value={editingPayment.amount}
+                    onChange={(e) => setEditingPayment({ ...editingPayment, amount: Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono text-emerald-400 focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Concepto</label>
+                <input
+                  type="text"
+                  required
+                  value={editingPayment.concept}
+                  onChange={(e) => setEditingPayment({ ...editingPayment, concept: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Método de Pago</label>
+                <select
+                  value={editingPayment.paymentMethod}
+                  onChange={(e) => setEditingPayment({ ...editingPayment, paymentMethod: e.target.value as any })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                >
+                  <option value="Efectivo">Efectivo</option>
+                  <option value="Tarjeta de Débito">Tarjeta de Débito</option>
+                  <option value="Tarjeta de Crédito">Tarjeta de Crédito</option>
+                  <option value="Transferencia Bancaria">Transferencia Bancaria</option>
+                  <option value="MercadoPago / QR">MercadoPago / QR</option>
+                </select>
+              </div>
+              <div className="pt-2 flex justify-end gap-2">
+                <button type="button" onClick={() => setEditingPayment(null)} className="px-4 py-2 border border-slate-800 rounded-lg text-slate-300 font-semibold hover:bg-slate-800">Cancelar</button>
+                <button type="submit" className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg font-bold shadow-sm">Guardar Cambios</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT EXTRA ITEM */}
+      {editingExtraItem && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-800 text-slate-200">
+            <div className="p-5 bg-slate-950 border-b border-slate-800 text-white flex justify-between items-center">
+              <h3 className="font-bold text-base flex items-center gap-2 font-mono">
+                <Edit className="w-5 h-5 text-emerald-400" /> Editar Producto ({editingExtraItem.name})
+              </h3>
+              <button onClick={() => setEditingExtraItem(null)} className="text-slate-400 hover:text-white font-bold text-lg">✕</button>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                onEditExtraItem(editingExtraItem);
+                setEditingExtraItem(null);
+              }}
+              className="p-6 space-y-4 text-xs"
+            >
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Nombre</label>
+                <input
+                  type="text"
+                  required
+                  value={editingExtraItem.name}
+                  onChange={(e) => setEditingExtraItem({ ...editingExtraItem, name: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Categoría</label>
+                  <select
+                    value={editingExtraItem.category}
+                    onChange={(e) => setEditingExtraItem({ ...editingExtraItem, category: e.target.value as any })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                  >
+                    <option value="Suplemento">Suplemento</option>
+                    <option value="Bebida">Bebida</option>
+                    <option value="Snack">Snack</option>
+                    <option value="Accesorio">Accesorio</option>
+                    <option value="Servicio">Servicio</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Precio ($ USD)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={editingExtraItem.price}
+                    onChange={(e) => setEditingExtraItem({ ...editingExtraItem, price: Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg font-mono font-bold text-emerald-400 focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Stock Disponible</label>
+                <input
+                  type="number"
+                  value={editingExtraItem.stock}
+                  onChange={(e) => setEditingExtraItem({ ...editingExtraItem, stock: Number(e.target.value) })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono focus:border-emerald-500"
+                />
+              </div>
+              <div className="pt-2 flex justify-end gap-2">
+                <button type="button" onClick={() => setEditingExtraItem(null)} className="px-4 py-2 border border-slate-800 rounded-lg text-slate-300 font-semibold hover:bg-slate-800">Cancelar</button>
+                <button type="submit" className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg font-bold shadow-sm">Guardar Cambios</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT EXTRA PURCHASE */}
+      {editingExtraPurchase && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-800 text-slate-200">
+            <div className="p-5 bg-slate-950 border-b border-slate-800 text-white flex justify-between items-center">
+              <h3 className="font-bold text-base flex items-center gap-2 font-mono">
+                <Edit className="w-5 h-5 text-emerald-400" /> Editar Consumo Extra
+              </h3>
+              <button onClick={() => setEditingExtraPurchase(null)} className="text-slate-400 hover:text-white font-bold text-lg">✕</button>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                onEditExtraPurchase(editingExtraPurchase);
+                setEditingExtraPurchase(null);
+              }}
+              className="p-6 space-y-4 text-xs"
+            >
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Cliente</label>
+                <input
+                  type="text"
+                  disabled
+                  value={editingExtraPurchase.clientName}
+                  className="w-full px-3 py-2 bg-slate-950/50 border border-slate-800 rounded-lg text-slate-400 cursor-not-allowed"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Producto</label>
+                <input
+                  type="text"
+                  value={editingExtraPurchase.itemName}
+                  onChange={(e) => setEditingExtraPurchase({ ...editingExtraPurchase, itemName: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Cantidad</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={editingExtraPurchase.quantity}
+                    onChange={(e) => {
+                      const q = Number(e.target.value);
+                      const unit = editingExtraPurchase.total / (editingExtraPurchase.quantity || 1);
+                      setEditingExtraPurchase({ ...editingExtraPurchase, quantity: q, total: q * unit });
+                    }}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg font-mono text-white focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Total ($ USD)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={editingExtraPurchase.total}
+                    onChange={(e) => setEditingExtraPurchase({ ...editingExtraPurchase, total: Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg font-mono font-bold text-emerald-400 focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={editingExtraPurchase.isPaid}
+                    onChange={(e) => setEditingExtraPurchase({ ...editingExtraPurchase, isPaid: e.target.checked })}
+                    className="rounded text-emerald-500 focus:ring-emerald-500 bg-slate-900 border-slate-700"
+                  />
+                  <span>¿Pagado al instante?</span>
+                </label>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Si no está pagado, cuenta como saldo deudor en la ficha del cliente.
+                </p>
+              </div>
+              <div className="pt-2 flex justify-end gap-2">
+                <button type="button" onClick={() => setEditingExtraPurchase(null)} className="px-4 py-2 border border-slate-800 rounded-lg text-slate-300 font-semibold hover:bg-slate-800">Cancelar</button>
+                <button type="submit" className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg font-bold shadow-sm">Guardar Cambios</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT TIP */}
+      {editingTip && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-800 text-slate-200">
+            <div className="p-5 bg-slate-950 border-b border-slate-800 text-white flex justify-between items-center">
+              <h3 className="font-bold text-base flex items-center gap-2 font-mono">
+                <Edit className="w-5 h-5 text-emerald-400" /> Editar Tip de Entrenamiento
+              </h3>
+              <button onClick={() => setEditingTip(null)} className="text-slate-400 hover:text-white font-bold text-lg">✕</button>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                onEditTip(editingTip);
+                setEditingTip(null);
+              }}
+              className="p-6 space-y-4 text-xs"
+            >
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Título</label>
+                <input
+                  type="text"
+                  required
+                  value={editingTip.title}
+                  onChange={(e) => setEditingTip({ ...editingTip, title: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Categoría</label>
+                  <select
+                    value={editingTip.category}
+                    onChange={(e) => setEditingTip({ ...editingTip, category: e.target.value as any })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                  >
+                    <option value="Nutrición">Nutrición</option>
+                    <option value="Técnica">Técnica</option>
+                    <option value="Motivación">Motivación</option>
+                    <option value="Descanso">Descanso</option>
+                    <option value="Seguridad">Seguridad</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Autor</label>
+                  <input
+                    type="text"
+                    value={editingTip.author}
+                    onChange={(e) => setEditingTip({ ...editingTip, author: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Contenido del Tip</label>
+                <textarea
+                  rows={4}
+                  required
+                  value={editingTip.content}
+                  onChange={(e) => setEditingTip({ ...editingTip, content: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
+                ></textarea>
+              </div>
+              <div className="pt-2 flex justify-end gap-2">
+                <button type="button" onClick={() => setEditingTip(null)} className="px-4 py-2 border border-slate-800 rounded-lg text-slate-300 font-semibold hover:bg-slate-800">Cancelar</button>
+                <button type="submit" className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg font-bold shadow-sm">Guardar Cambios</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM DELETE MODAL */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden border border-rose-500/40 text-slate-200">
+            <div className="p-5 bg-slate-950 border-b border-slate-800 text-white flex justify-between items-center">
+              <h3 className="font-bold text-sm flex items-center gap-2 text-rose-400">
+                <Trash2 className="w-5 h-5 text-rose-500" /> Confirmar Eliminación
+              </h3>
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="text-slate-400 hover:text-white text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-5 space-y-3 text-xs">
+              <p className="text-slate-300">
+                ¿Estás seguro de que deseas eliminar permanentemente:
+              </p>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 font-semibold text-rose-300">
+                {deleteConfirm.name}
+              </div>
+              <p className="text-slate-500 text-[11px]">
+                Esta acción no se puede deshacer.
+              </p>
+              <div className="pt-3 flex justify-end gap-2">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="px-3.5 py-1.5 border border-slate-800 rounded-lg text-slate-300 font-semibold hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => {
+                    if (deleteConfirm.type === "client") onDeleteClient(deleteConfirm.id);
+                    if (deleteConfirm.type === "routine") onDeleteRoutine(deleteConfirm.id);
+                    if (deleteConfirm.type === "payment") onDeletePayment(deleteConfirm.id);
+                    if (deleteConfirm.type === "extraItem") onDeleteExtraItem(deleteConfirm.id);
+                    if (deleteConfirm.type === "extraPurchase") onDeleteExtraPurchase(deleteConfirm.id);
+                    if (deleteConfirm.type === "tip") onDeleteTip(deleteConfirm.id);
+                    setDeleteConfirm(null);
+                  }}
+                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-bold shadow-sm transition-colors cursor-pointer"
+                >
+                  Sí, Eliminar
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

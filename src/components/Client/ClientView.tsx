@@ -28,6 +28,8 @@ import {
   Flame,
   Layers,
   Info,
+  Edit,
+  Trash2,
 } from "lucide-react";
 
 interface ClientViewProps {
@@ -36,6 +38,9 @@ interface ClientViewProps {
   routines: Routine[];
   completedWorkouts: CompletedWorkout[];
   onToggleWorkoutCompleted: (routineId: string, day: string) => void;
+  onEditCompletedWorkout?: (workout: CompletedWorkout) => void;
+  onDeleteCompletedWorkout?: (workoutId: string) => void;
+  onUpdateClientProfile?: (client: Client) => void;
   payments: Payment[];
   extraPurchases: ClientExtraPurchase[];
   tips: GymTip[];
@@ -60,11 +65,24 @@ export const ClientView: React.FC<ClientViewProps> = ({
   routines,
   completedWorkouts,
   onToggleWorkoutCompleted,
+  onEditCompletedWorkout,
+  onDeleteCompletedWorkout,
+  onUpdateClientProfile,
   payments,
   extraPurchases,
   tips,
 }) => {
   const [activeTab, setActiveTab] = useState<"chat" | "rutinas" | "deuda" | "extras" | "tips">("chat");
+
+  // Edit profile modal state
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [profileName, setProfileName] = useState(currentClient.name);
+  const [profileEmail, setProfileEmail] = useState(currentClient.email);
+  const [profilePhone, setProfilePhone] = useState(currentClient.phone);
+
+  // Edit / Delete completed workout state
+  const [editingWorkout, setEditingWorkout] = useState<CompletedWorkout | null>(null);
+  const [deleteWorkoutId, setDeleteWorkoutId] = useState<string | null>(null);
 
   // Determine current day of week in Spanish
   const dayIndex = new Date().getDay(); // 0 is Sunday, 1 is Monday...
@@ -189,11 +207,25 @@ export const ClientView: React.FC<ClientViewProps> = ({
                 {currentGym.name}
               </span>
             </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight mt-1 flex items-center gap-2">
-              ¡Hola, {currentClient.name}!
-            </h1>
+            <div className="flex items-center gap-3 mt-1">
+              <h1 className="text-2xl font-bold text-white tracking-tight">
+                ¡Hola, {currentClient.name}!
+              </h1>
+              <button
+                onClick={() => {
+                  setProfileName(currentClient.name);
+                  setProfileEmail(currentClient.email);
+                  setProfilePhone(currentClient.phone);
+                  setIsEditProfileOpen(true);
+                }}
+                className="flex items-center gap-1 text-[11px] font-semibold bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white px-2.5 py-1 rounded-lg border border-slate-700 transition-colors cursor-pointer"
+                title="Editar mis datos"
+              >
+                <Edit className="w-3 h-3 text-emerald-400" /> Editar Perfil
+              </button>
+            </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Membresía: <span className="font-semibold text-slate-200">{currentClient.membershipPlan}</span> • Cuota: <span className="font-mono text-emerald-400 font-bold">${currentClient.monthlyFee} USD</span>
+              Email: <span className="text-slate-300">{currentClient.email}</span> • Plan: <span className="font-semibold text-slate-200">{currentClient.membershipPlan}</span> • Cuota: <span className="font-mono text-emerald-400 font-bold">${currentClient.monthlyFee} USD</span>
             </p>
           </div>
 
@@ -393,10 +425,32 @@ export const ClientView: React.FC<ClientViewProps> = ({
                 </div>
               </div>
 
-              {/* Status indicator */}
-              <div className="flex items-center space-x-2 text-xs text-slate-400 font-mono">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span className="text-[11px]">En línea</span>
+              {/* Status and Actions indicator */}
+              <div className="flex items-center space-x-3 text-xs text-slate-400 font-mono">
+                <button
+                  onClick={() => {
+                    if (window.confirm("¿Deseas reiniciar el historial del chat con DeepSeek?")) {
+                      setMessages([
+                        {
+                          id: `init-${Date.now()}`,
+                          sender: "deepseek",
+                          text: `Historial reiniciado. ¡Hola **${currentClient.name}**! ¿En qué puedo ayudarte con tu entrenamiento hoy?`,
+                          thought: "Contexto reiniciado por el atleta.",
+                          timestamp: "Ahora",
+                        },
+                      ]);
+                    }
+                  }}
+                  className="text-[11px] text-slate-400 hover:text-rose-400 transition-colors flex items-center gap-1 cursor-pointer"
+                  title="Reiniciar chat"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Limpiar chat</span>
+                </button>
+                <div className="flex items-center space-x-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span className="text-[11px]">En línea</span>
+                </div>
               </div>
             </div>
 
@@ -405,7 +459,7 @@ export const ClientView: React.FC<ClientViewProps> = ({
               {messages.map((m) => (
                 <div
                   key={m.id}
-                  className={`flex gap-2.5 ${m.sender === "user" ? "justify-end" : "justify-start"}`}
+                  className={`group relative flex gap-2.5 ${m.sender === "user" ? "justify-end" : "justify-start"}`}
                 >
                   {m.sender === "deepseek" && (
                     <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0 mt-0.5">
@@ -414,18 +468,27 @@ export const ClientView: React.FC<ClientViewProps> = ({
                   )}
 
                   <div
-                    className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 shadow-sm space-y-2 ${
+                    className={`relative max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 shadow-sm space-y-2 ${
                       m.sender === "user"
                         ? "bg-emerald-500 text-slate-950 font-medium rounded-tr-none"
                         : "bg-slate-900 text-slate-200 border border-slate-800 rounded-tl-none"
                     }`}
                   >
+                    {/* Delete Message Button */}
+                    <button
+                      onClick={() => setMessages((prev) => prev.filter((msg) => msg.id !== m.id))}
+                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-800/80 rounded transition-all cursor-pointer"
+                      title="Eliminar este mensaje"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+
                     {/* DeepSeek Collapsible Thought Block */}
                     {m.thought && (
                       <div className="bg-slate-950/90 rounded-lg p-2.5 border border-slate-800 text-[11px] text-slate-400 font-mono">
                         <button
                           onClick={() => toggleThought(m.id)}
-                          className="flex items-center justify-between w-full font-mono text-[10px] text-emerald-400 hover:text-emerald-300 font-bold mb-1"
+                          className="flex items-center justify-between w-full font-mono text-[10px] text-emerald-400 hover:text-emerald-300 font-bold mb-1 cursor-pointer"
                         >
                           <span className="flex items-center gap-1">
                             <Sparkles className="w-3 h-3 text-emerald-400" />
@@ -446,7 +509,7 @@ export const ClientView: React.FC<ClientViewProps> = ({
                     )}
 
                     {/* Message Body */}
-                    <div className="whitespace-pre-line leading-relaxed text-xs">
+                    <div className="whitespace-pre-line leading-relaxed text-xs pr-4">
                       {m.text}
                     </div>
 
@@ -649,7 +712,7 @@ export const ClientView: React.FC<ClientViewProps> = ({
                     {/* Checkbox button */}
                     <button
                       onClick={() => onToggleWorkoutCompleted(r.id, r.day)}
-                      className={`w-full py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                      className={`w-full py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
                         isCompleted
                           ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30"
                           : "bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-sm"
@@ -661,6 +724,81 @@ export const ClientView: React.FC<ClientViewProps> = ({
                   </div>
                 );
               })}
+            </div>
+
+            {/* SECCIÓN EDITAR Y ELIMINAR RUTINAS REALIZADAS */}
+            <div className="pt-6 border-t border-slate-800">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Flame className="w-4 h-4 text-emerald-400" />
+                    Registro de Entrenamientos Efectuados ({clientCompleted.length})
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Historial de rutinas completadas. Puedes editar la fecha, día o grupo muscular, o eliminar registros erróneos.
+                  </p>
+                </div>
+              </div>
+
+              {clientCompleted.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead className="bg-slate-950/70 text-slate-400 uppercase font-semibold text-[10px] tracking-wider border-b border-slate-800 font-mono">
+                      <tr>
+                        <th className="py-2.5 px-3">Día</th>
+                        <th className="py-2.5 px-3">Rutina</th>
+                        <th className="py-2.5 px-3">Grupo Muscular</th>
+                        <th className="py-2.5 px-3">Fecha y Hora</th>
+                        <th className="py-2.5 px-3 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {clientCompleted.map((w) => (
+                        <tr key={w.id} className="hover:bg-slate-850/40 transition-colors">
+                          <td className="py-2.5 px-3 font-mono font-bold text-emerald-400">
+                            <span className="bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                              {w.day}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 font-bold text-white">{w.routineName}</td>
+                          <td className="py-2.5 px-3 text-slate-300">{w.muscleGroup}</td>
+                          <td className="py-2.5 px-3 font-mono text-slate-400 text-[11px]">
+                            {new Date(w.completedAt).toLocaleString("es-ES", {
+                              dateStyle: "short",
+                              timeStyle: "short",
+                            })}
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            <div className="flex items-center justify-end space-x-2">
+                              <button
+                                onClick={() => setEditingWorkout(w)}
+                                className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                                title="Editar sesión realizada"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => setDeleteWorkoutId(w.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                                title="Eliminar registro de entrenamiento"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="bg-slate-950/60 p-6 rounded-xl border border-slate-800/80 text-center text-xs text-slate-400">
+                  <p>Aún no has registrado rutinas realizadas esta semana.</p>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Marca cualquier rutina arriba o interactúa con el chat de DeepSeek para que registre tus sesiones.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -861,6 +999,248 @@ export const ClientView: React.FC<ClientViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* MODAL 1: EDITAR PERFIL ATLETA */}
+      {isEditProfileOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-base text-white flex items-center gap-2">
+                <Edit className="w-4 h-4 text-emerald-400" />
+                Editar Datos de Perfil
+              </h3>
+              <button
+                onClick={() => setIsEditProfileOpen(false)}
+                className="text-slate-400 hover:text-white cursor-pointer text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (onUpdateClientProfile) {
+                  onUpdateClientProfile({
+                    ...currentClient,
+                    name: profileName,
+                    email: profileEmail,
+                    phone: profilePhone,
+                  });
+                }
+                setIsEditProfileOpen(false);
+              }}
+              className="space-y-3.5 text-xs"
+            >
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Nombre Completo</label>
+                <input
+                  type="text"
+                  required
+                  value={profileName}
+                  onChange={(e) => setProfileName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Correo Electrónico</label>
+                <input
+                  type="email"
+                  required
+                  value={profileEmail}
+                  onChange={(e) => setProfileEmail(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Teléfono / WhatsApp</label>
+                <input
+                  type="tel"
+                  required
+                  value={profilePhone}
+                  onChange={(e) => setProfilePhone(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 space-y-1 text-slate-400">
+                <p className="text-[11px]">Sede: <strong className="text-slate-200">{currentGym.name}</strong></p>
+                <p className="text-[11px]">Plan: <strong className="text-slate-200">{currentClient.membershipPlan}</strong></p>
+                <p className="text-[11px]">Cuota: <strong className="text-emerald-400 font-mono">${currentClient.monthlyFee} USD</strong></p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsEditProfileOpen(false)}
+                  className="px-4 py-2 bg-slate-800 text-slate-300 hover:bg-slate-700 rounded-xl font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl cursor-pointer"
+                >
+                  Guardar Cambios
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: EDITAR ENTRENAMIENTO EFECTUADO */}
+      {editingWorkout && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-base text-white flex items-center gap-2">
+                <Edit className="w-4 h-4 text-emerald-400" />
+                Editar Sesión Realizada
+              </h3>
+              <button
+                onClick={() => setEditingWorkout(null)}
+                className="text-slate-400 hover:text-white cursor-pointer text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (onEditCompletedWorkout) {
+                  onEditCompletedWorkout(editingWorkout);
+                }
+                setEditingWorkout(null);
+              }}
+              className="space-y-3.5 text-xs"
+            >
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Nombre de la Rutina</label>
+                <input
+                  type="text"
+                  required
+                  value={editingWorkout.routineName}
+                  onChange={(e) =>
+                    setEditingWorkout({ ...editingWorkout, routineName: e.target.value })
+                  }
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Día Asignado</label>
+                  <select
+                    value={editingWorkout.day}
+                    onChange={(e) =>
+                      setEditingWorkout({ ...editingWorkout, day: e.target.value })
+                    }
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-emerald-500"
+                  >
+                    {DAYS_OF_WEEK.map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Grupo Muscular</label>
+                  <select
+                    value={editingWorkout.muscleGroup}
+                    onChange={(e) =>
+                      setEditingWorkout({
+                        ...editingWorkout,
+                        muscleGroup: e.target.value as MuscleGroup,
+                      })
+                    }
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-emerald-500"
+                  >
+                    {MUSCLE_GROUPS.map((mg) => (
+                      <option key={mg} value={mg}>{mg}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Fecha y Hora Completada</label>
+                <input
+                  type="datetime-local"
+                  value={editingWorkout.completedAt.slice(0, 16)}
+                  onChange={(e) =>
+                    setEditingWorkout({
+                      ...editingWorkout,
+                      completedAt: new Date(e.target.value).toISOString(),
+                    })
+                  }
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-emerald-500 font-mono"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingWorkout(null)}
+                  className="px-4 py-2 bg-slate-800 text-slate-300 hover:bg-slate-700 rounded-xl font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl cursor-pointer"
+                >
+                  Guardar Cambios
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: CONFIRMAR ELIMINACIÓN DE ENTRENAMIENTO */}
+      {deleteWorkoutId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center space-x-3 text-rose-400">
+              <div className="w-10 h-10 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-white">¿Eliminar Registro?</h3>
+                <p className="text-xs text-slate-400">Esta acción no se puede deshacer.</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              ¿Estás seguro de que deseas eliminar este entrenamiento del registro semanal? Se descontará de tus rutinas completadas.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                onClick={() => setDeleteWorkoutId(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  if (onDeleteCompletedWorkout && deleteWorkoutId) {
+                    onDeleteCompletedWorkout(deleteWorkoutId);
+                  }
+                  setDeleteWorkoutId(null);
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Sí, Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
