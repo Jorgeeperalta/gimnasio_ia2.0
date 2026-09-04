@@ -30,6 +30,7 @@ import { GymAdminView } from "./components/GymAdmin/GymAdminView";
 import { ClientView } from "./components/Client/ClientView";
 import { ArchitectureModal } from "./components/ArchitectureModal";
 import { LoginView } from "./components/Auth/LoginView";
+import { GymThemeInjector } from "./components/GymThemeInjector";
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
@@ -59,7 +60,26 @@ export default function App() {
     }
   }, [users]);
 
-  const [gyms, setGyms] = useState<Gym[]>(INITIAL_GYMS);
+  const [gyms, setGyms] = useState<Gym[]>(() => {
+    try {
+      const saved = localStorage.getItem("gymcore_gyms");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return INITIAL_GYMS;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("gymcore_gyms", JSON.stringify(gyms));
+    } catch {
+      // ignore
+    }
+  }, [gyms]);
   const [selectedGymId, setSelectedGymId] = useState<string>(() => {
     try {
       const saved = localStorage.getItem("gymcore_active_user");
@@ -73,7 +93,24 @@ export default function App() {
     return "gym-1";
   });
   const [gymBillings, setGymBillings] = useState<GymBilling[]>(INITIAL_GYM_BILLINGS);
-  const [clients, setClients] = useState<Client[]>(INITIAL_CLIENTS);
+  const [clients, setClients] = useState<Client[]>(() => {
+    try {
+      const saved = localStorage.getItem("gymcore_clients");
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return INITIAL_CLIENTS;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("gymcore_clients", JSON.stringify(clients));
+    } catch {
+      // ignore
+    }
+  }, [clients]);
+
   const [selectedClientId, setSelectedClientId] = useState<string>(() => {
     try {
       const saved = localStorage.getItem("gymcore_active_user");
@@ -86,10 +123,42 @@ export default function App() {
     }
     return "client-1";
   });
-  const [routines, setRoutines] = useState<Routine[]>(INITIAL_ROUTINES);
-  const [completedWorkouts, setCompletedWorkouts] = useState<CompletedWorkout[]>(
-    INITIAL_COMPLETED_WORKOUTS
-  );
+
+  const [routines, setRoutines] = useState<Routine[]>(() => {
+    try {
+      const saved = localStorage.getItem("gymcore_routines");
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return INITIAL_ROUTINES;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("gymcore_routines", JSON.stringify(routines));
+    } catch {
+      // ignore
+    }
+  }, [routines]);
+
+  const [completedWorkouts, setCompletedWorkouts] = useState<CompletedWorkout[]>(() => {
+    try {
+      const saved = localStorage.getItem("gymcore_completed_workouts");
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return INITIAL_COMPLETED_WORKOUTS;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("gymcore_completed_workouts", JSON.stringify(completedWorkouts));
+    } catch {
+      // ignore
+    }
+  }, [completedWorkouts]);
   const [payments, setPayments] = useState<Payment[]>(INITIAL_PAYMENTS);
   const [extraItems, setExtraItems] = useState<ExtraItem[]>(INITIAL_EXTRA_ITEMS);
   const [extraPurchases, setExtraPurchases] = useState<ClientExtraPurchase[]>(
@@ -124,8 +193,11 @@ export default function App() {
   };
 
   // Active entities
-  const currentGym = gyms.find((g) => g.id === selectedGymId) || gyms[0];
   const currentClient = clients.find((c) => c.id === selectedClientId) || clients[0];
+  const currentGym =
+    currentUser?.role === "client" && currentClient
+      ? gyms.find((g) => g.id === currentClient.gymId) || gyms[0]
+      : gyms.find((g) => g.id === selectedGymId) || gyms[0];
 
   // Handlers for User Management
   const handleAddUser = (newUser: UserAccount) => {
@@ -248,6 +320,23 @@ export default function App() {
       joinDate: new Date().toISOString().split("T")[0],
     };
     setClients((prev) => [newClient, ...prev]);
+
+    // Sync routines if assigned to any
+    const routineIds = newClient.assignedRoutineIds || (newClient.assignedRoutineId ? [newClient.assignedRoutineId] : []);
+    if (routineIds.length > 0) {
+      setRoutines((prev) =>
+        prev.map((r) => {
+          if (routineIds.includes(r.id)) {
+            const currentClients = r.assignedClientIds || [];
+            if (!currentClients.includes(clientId)) {
+              return { ...r, assignedClientIds: [...currentClients, clientId] };
+            }
+          }
+          return r;
+        })
+      );
+    }
+
     // update gym totalMembers count
     setGyms((prev) =>
       prev.map((g) =>
@@ -283,6 +372,24 @@ export default function App() {
           : u
       )
     );
+
+    // Sync routines for this client if assignedRoutineIds is present
+    const routineIds =
+      updatedClient.assignedRoutineIds ||
+      (updatedClient.assignedRoutineId ? [updatedClient.assignedRoutineId] : []);
+    setRoutines((prev) =>
+      prev.map((r) => {
+        if (r.gymId !== updatedClient.gymId) return r;
+        const shouldHave = routineIds.includes(r.id);
+        const currentClients = r.assignedClientIds || [];
+        if (shouldHave && !currentClients.includes(updatedClient.id)) {
+          return { ...r, assignedClientIds: [...currentClients, updatedClient.id] };
+        } else if (!shouldHave && currentClients.includes(updatedClient.id)) {
+          return { ...r, assignedClientIds: currentClients.filter((id) => id !== updatedClient.id) };
+        }
+        return r;
+      })
+    );
   };
 
   const handleDeleteClient = (clientId: string) => {
@@ -301,6 +408,18 @@ export default function App() {
     setExtraPurchases((prev) => prev.filter((p) => p.clientId !== clientId));
     setCompletedWorkouts((prev) => prev.filter((w) => w.clientId !== clientId));
     setUsers((prev) => prev.filter((u) => u.clientId !== clientId));
+    // Clean up routine assignedClientIds
+    setRoutines((prev) =>
+      prev.map((r) => {
+        if (r.assignedClientIds && r.assignedClientIds.includes(clientId)) {
+          return {
+            ...r,
+            assignedClientIds: r.assignedClientIds.filter((id) => id !== clientId),
+          };
+        }
+        return r;
+      })
+    );
     if (selectedClientId === clientId) {
       const remaining = clients.filter((c) => c.id !== clientId);
       if (remaining.length > 0) setSelectedClientId(remaining[0].id);
@@ -451,6 +570,62 @@ export default function App() {
         return c;
       })
     );
+  };
+
+  const handleRemoveRoutineFromClient = (clientId: string, routineId: string) => {
+    setClients((prev) =>
+      prev.map((c) => {
+        if (c.id !== clientId) return c;
+        const currentRots = c.assignedRoutineIds || (c.assignedRoutineId ? [c.assignedRoutineId] : []);
+        const updatedRots = currentRots.filter((id) => id !== routineId);
+        return {
+          ...c,
+          assignedRoutineId: updatedRots[0] || undefined,
+          assignedRoutineIds: updatedRots,
+        };
+      })
+    );
+
+    // Also remove clientId from routine's assignedClientIds
+    setRoutines((prev) =>
+      prev.map((r) => {
+        if (r.id !== routineId) return r;
+        const currentClients = r.assignedClientIds || [];
+        return {
+          ...r,
+          assignedClientIds: currentClients.filter((id) => id !== clientId),
+        };
+      })
+    );
+  };
+
+  const handleUnassignAllRoutinesFromClient = (clientId: string) => {
+    setClients((prev) =>
+      prev.map((c) => {
+        if (c.id !== clientId) return c;
+        return {
+          ...c,
+          assignedRoutineId: undefined,
+          assignedRoutineIds: [],
+        };
+      })
+    );
+
+    setRoutines((prev) =>
+      prev.map((r) => {
+        const currentClients = r.assignedClientIds || [];
+        if (currentClients.includes(clientId)) {
+          return {
+            ...r,
+            assignedClientIds: currentClients.filter((id) => id !== clientId),
+          };
+        }
+        return r;
+      })
+    );
+
+    // Also remove any completed workouts for this client
+    setCompletedWorkouts((prev) => prev.filter((w) => w.clientId !== clientId));
   };
 
   const handleAddPayment = (paymentData: Omit<Payment, "id" | "date">) => {
@@ -613,6 +788,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans antialiased flex flex-col selection:bg-emerald-500/30 selection:text-emerald-300">
+      {/* Inyección dinámica de CSS exclusivo y aislado por gimnasio */}
+      <GymThemeInjector gym={currentGym} />
+
       {/* Header Bar with Geometric Balance styling & authenticated user */}
       <HeaderBar
         currentUser={currentUser}
@@ -631,8 +809,8 @@ export default function App() {
         onOpenArchitecture={() => setIsArchitectureModalOpen(true)}
       />
 
-      {/* Main Container - Module displayed strictly according to authenticated role */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+      {/* Main Container - Module displayed strictly according to authenticated role with dynamic Gym CSS applied */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 gym-themed-workspace">
         {currentUser.role === "super_admin" && (
           <SuperAdminView
             gyms={gyms}
@@ -688,6 +866,8 @@ export default function App() {
             onDeleteUser={handleDeleteUser}
             onAssignRoutinesToClient={handleAssignRoutinesToClient}
             onAssignClientsToRoutine={handleAssignClientsToRoutine}
+            onRemoveRoutineFromClient={handleRemoveRoutineFromClient}
+            onUnassignAllRoutinesFromClient={handleUnassignAllRoutinesFromClient}
           />
         )}
 

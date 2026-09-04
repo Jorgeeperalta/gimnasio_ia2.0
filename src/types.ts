@@ -12,6 +12,20 @@ export interface UserAccount {
   avatarUrl?: string;
 }
 
+export interface GymThemeConfig {
+  themeId: string;
+  themeName: string;
+  primaryColor: string;
+  secondaryColor?: string;
+  accentColor: string;
+  primaryRgb: string;
+  bgColor?: string;
+  surfaceColor?: string;
+  borderRadius: "sharp" | "rounded" | "curved" | "pill";
+  fontVibe?: "sport_tech" | "bold_power" | "clean_modern" | "cyber_mono";
+  customCss?: string;
+}
+
 export interface Gym {
   id: string;
   name: string;
@@ -24,6 +38,7 @@ export interface Gym {
   totalMembers: number;
   plan: "Básico" | "Pro" | "Enterprise";
   createdAt: string;
+  theme?: GymThemeConfig; // Identidad CSS y tema asignado en la creación
 }
 
 export interface GymBilling {

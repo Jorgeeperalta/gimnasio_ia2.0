@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Client,
   Gym,
@@ -89,14 +89,70 @@ export const ClientView: React.FC<ClientViewProps> = ({
   const dayNamesMap = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
   const todayDayName = dayNamesMap[dayIndex];
 
-  // Client specific workouts
-  const clientCompleted = completedWorkouts.filter((w) => w.clientId === currentClient.id);
+  // Ensure we get the client's actual gym ID even if currentGym differs
+  const clientGymId = currentClient.gymId || currentGym.id;
+  const gymRoutines = routines.filter((r) => r.gymId === clientGymId);
+
+  // Set of routine IDs specifically assigned to this client by the gym
+  const clientAssignedIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (currentClient.assignedRoutineId) {
+      ids.add(currentClient.assignedRoutineId);
+    }
+    if (Array.isArray(currentClient.assignedRoutineIds)) {
+      currentClient.assignedRoutineIds.forEach((id) => {
+        if (id) ids.add(id);
+      });
+    }
+    gymRoutines.forEach((r) => {
+      if (r.assignedClientIds && r.assignedClientIds.includes(currentClient.id)) {
+        ids.add(r.id);
+      }
+    });
+    return ids;
+  }, [currentClient.id, currentClient.assignedRoutineId, currentClient.assignedRoutineIds, gymRoutines]);
+
+  // A routine is visible to this athlete if:
+  // 1) It was specifically assigned to this athlete by the gym/coach
+  // 2) OR it is a General Sede routine (no client restrictions)
+  const clientRoutines = useMemo(() => {
+    return gymRoutines.filter((r) => {
+      const isDirectlyAssigned = clientAssignedIds.has(r.id);
+      const isRestrictedToOthers = Boolean(
+        r.assignedClientIds &&
+        r.assignedClientIds.length > 0 &&
+        !r.assignedClientIds.includes(currentClient.id)
+      );
+      return isDirectlyAssigned || !isRestrictedToOthers;
+    });
+  }, [gymRoutines, clientAssignedIds, currentClient.id]);
+
+  // Counts of specifically assigned vs general sede
+  const specificallyAssignedCount = useMemo(() => {
+    return clientRoutines.filter((r) => clientAssignedIds.has(r.id)).length;
+  }, [clientRoutines, clientAssignedIds]);
+
+  const generalSedeCount = clientRoutines.length - specificallyAssignedCount;
+
+  // Helper to determine the primary routine for any day
+  const getRoutineForDay = (day: string) => {
+    // 1st priority: routine specifically assigned to this client for this day
+    const specific = clientRoutines.find((r) => r.day === day && clientAssignedIds.has(r.id));
+    if (specific) return specific;
+    // 2nd priority: general sede routine for this day
+    const general = clientRoutines.find((r) => r.day === day && (!r.assignedClientIds || r.assignedClientIds.length === 0));
+    if (general) return general;
+    // Fallback: any routine matching this day
+    return clientRoutines.find((r) => r.day === day);
+  };
+
+  // Client specific workouts completed (all records preserved)
+  const clientCompleted = completedWorkouts.filter(
+    (w) => w.clientId === currentClient.id
+  );
   const completedDaysThisWeek = clientCompleted.map((w) => w.day);
   const clientPayments = payments.filter((p) => p.clientId === currentClient.id);
   const clientExtras = extraPurchases.filter((e) => e.clientId === currentClient.id);
-
-  // Routines of the client's gym
-  const gymRoutines = routines.filter((r) => r.gymId === currentGym.id);
 
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -104,7 +160,7 @@ export const ClientView: React.FC<ClientViewProps> = ({
       id: "init-1",
       sender: "deepseek",
       text: `¡Hola **${currentClient.name}**! 👋 Soy tu **DeepSeek Coach** de **${currentGym.name}**.\n\nHoy es **${todayDayName}**. Puedes preguntarme qué rutina te toca hoy, elegir entrenar por grupo muscular (Pecho, Espalda, Piernas, etc.), revisar cuántas rutinas has completado esta semana o consultar tu control de pagos y deuda.\n\n¿Qué quieres entrenar hoy?`,
-      thought: `Inicializando contexto del atleta: ${currentClient.name} (${currentGym.name}). Estado de deuda: $${currentClient.debtAmount} USD. Rutinas completadas esta semana: ${completedDaysThisWeek.length}.`,
+      thought: `Inicializando contexto del atleta: ${currentClient.name} (${currentGym.name}). Estado de deuda: $${currentClient.debtAmount} USD. Rutinas asignadas activas: ${clientRoutines.length} (${specificallyAssignedCount} personalizadas, ${generalSedeCount} de sede). Rutinas completadas esta semana: ${completedDaysThisWeek.length}.`,
       timestamp: "Ahora",
     },
   ]);
@@ -112,6 +168,7 @@ export const ClientView: React.FC<ClientViewProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [showThought, setShowThought] = useState<Record<string, boolean>>({ "init-1": true });
   const [selectedMuscleFilter, setSelectedMuscleFilter] = useState<string>("todos");
+  const [selectedScopeFilter, setSelectedScopeFilter] = useState<"todas" | "asignadas" | "general">("todas");
 
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
@@ -143,7 +200,7 @@ export const ClientView: React.FC<ClientViewProps> = ({
           clientName: currentClient.name,
           gymName: currentGym.name,
           todayDayName,
-          assignedRoutines: gymRoutines,
+          assignedRoutines: clientRoutines,
           weeklyCompleted: completedDaysThisWeek,
           debtAmount: currentClient.debtAmount,
           extras: clientExtras,
@@ -186,9 +243,12 @@ export const ClientView: React.FC<ClientViewProps> = ({
   };
 
   const isTodayCompleted = completedDaysThisWeek.includes(todayDayName);
-  const todaysRoutine = gymRoutines.find((r) => r.day.toLowerCase() === todayDayName.toLowerCase());
+  const todaysRoutine = getRoutineForDay(todayDayName);
 
-  const filteredRoutines = gymRoutines.filter((r) => {
+  const filteredRoutines = clientRoutines.filter((r) => {
+    const isDirectlyAssigned = clientAssignedIds.has(r.id);
+    if (selectedScopeFilter === "asignadas" && !isDirectlyAssigned) return false;
+    if (selectedScopeFilter === "general" && isDirectlyAssigned) return false;
     if (selectedMuscleFilter === "todos") return true;
     return r.muscleGroup === selectedMuscleFilter;
   });
@@ -283,7 +343,8 @@ export const ClientView: React.FC<ClientViewProps> = ({
             {DAYS_OF_WEEK.map((day) => {
               const isCompleted = completedDaysThisWeek.includes(day);
               const isToday = day === todayDayName;
-              const routineForDay = gymRoutines.find((r) => r.day === day);
+              const routineForDay = getRoutineForDay(day);
+              const isSpecificallyAssigned = routineForDay && clientAssignedIds.has(routineForDay.id);
 
               return (
                 <div
@@ -305,8 +366,11 @@ export const ClientView: React.FC<ClientViewProps> = ({
                     ) : null}
                   </div>
 
-                  <p className="text-[11px] font-bold truncate text-slate-200">
-                    {routineForDay ? routineForDay.muscleGroup : "Descanso"}
+                  <p className="text-[11px] font-bold truncate text-slate-200 flex items-center justify-center gap-1">
+                    {isSpecificallyAssigned && (
+                      <span className="text-amber-400 font-bold" title="Rutina asignada por el gimnasio">★</span>
+                    )}
+                    <span>{routineForDay ? routineForDay.muscleGroup : "Descanso"}</span>
                   </p>
 
                   <div className="mt-1.5">
@@ -358,7 +422,7 @@ export const ClientView: React.FC<ClientViewProps> = ({
             }`}
           >
             <Dumbbell className="w-4 h-4" />
-            Mis Rutinas Semanales ({gymRoutines.length})
+            Mis Rutinas Semanales ({clientRoutines.length})
           </button>
 
           <button
@@ -621,64 +685,139 @@ export const ClientView: React.FC<ClientViewProps> = ({
         {/* TAB 2: MIS RUTINAS SEMANALES */}
         {activeTab === "rutinas" && (
           <div className="p-5 space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div>
-                <h2 className="text-sm font-bold text-white">
-                  Plan de Entrenamiento Semanal en {currentGym.name}
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span>Plan de Entrenamiento Semanal en {currentGym.name}</span>
                 </h2>
-                <p className="text-xs text-slate-400">
-                  Consulta tu rutina por día o filtra por grupo muscular. Marca cada sesión como efectuada para llevar tu control semanal.
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Visualiza tus rutinas asignadas por el gimnasio o el plan general. Marca cada sesión para llevar tu control semanal.
                 </p>
               </div>
 
-              {/* Muscle Group Filter */}
-              <div className="flex items-center gap-2">
-                <Layers className="w-4 h-4 text-emerald-400" />
-                <select
-                  value={selectedMuscleFilter}
-                  onChange={(e) => setSelectedMuscleFilter(e.target.value)}
-                  className="text-xs bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 font-semibold text-slate-200 focus:border-emerald-500"
-                >
-                  <option value="todos">Todos los Grupos Musculares</option>
-                  {MUSCLE_GROUPS.map((mg) => (
-                    <option key={mg} value={mg}>{mg}</option>
-                  ))}
-                </select>
+              {/* Filters: Scope & Muscle Group */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Scope Filter Buttons */}
+                <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                  <button
+                    onClick={() => setSelectedScopeFilter("todas")}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                      selectedScopeFilter === "todas"
+                        ? "bg-slate-800 text-white shadow-sm"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    Todas ({clientRoutines.length})
+                  </button>
+                  <button
+                    onClick={() => setSelectedScopeFilter("asignadas")}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 ${
+                      selectedScopeFilter === "asignadas"
+                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                        : "text-slate-400 hover:text-amber-300"
+                    }`}
+                  >
+                    <span className="text-amber-400">★</span> Asignadas ({specificallyAssignedCount})
+                  </button>
+                  <button
+                    onClick={() => setSelectedScopeFilter("general")}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                      selectedScopeFilter === "general"
+                        ? "bg-slate-800 text-slate-200 border border-slate-700"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    General ({generalSedeCount})
+                  </button>
+                </div>
+
+                {/* Muscle Group Filter */}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedMuscleFilter}
+                    onChange={(e) => setSelectedMuscleFilter(e.target.value)}
+                    className="text-xs bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 font-semibold text-slate-200 focus:border-emerald-500 cursor-pointer"
+                  >
+                    <option value="todos">Todos los Músculos</option>
+                    {MUSCLE_GROUPS.map((mg) => (
+                      <option key={mg} value={mg}>{mg}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Info Summary Banner */}
+            <div className="bg-slate-950/70 rounded-xl p-3.5 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2.5">
+                <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="text-slate-300 text-[11px] sm:text-xs">
+                  Tu perfil tiene <strong className="text-amber-300 font-bold">{specificallyAssignedCount}</strong> rutina(s) personalizada(s) asignada(s) por tu gimnasio y acceso a <strong className="text-slate-200 font-bold">{generalSedeCount}</strong> del plan de la sede.
+                </span>
+              </div>
+              <div className="text-[11px] font-mono text-slate-400 shrink-0">
+                Semana: <strong className="text-emerald-400 font-bold">{completedDaysThisWeek.length}/7</strong> completadas
               </div>
             </div>
 
             {/* Routines Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredRoutines.map((r) => {
-                const isCompleted = completedDaysThisWeek.includes(r.day);
-                const isToday = r.day === todayDayName;
+            {filteredRoutines.length === 0 ? (
+              <div className="bg-slate-950/60 p-8 rounded-2xl border border-slate-800 text-center text-xs text-slate-400 space-y-2">
+                <Dumbbell className="w-8 h-8 text-slate-600 mx-auto opacity-50" />
+                <p className="font-semibold text-slate-300 text-sm">
+                  {selectedScopeFilter === "asignadas"
+                    ? "No tienes rutinas asignadas especialmente con los filtros seleccionados."
+                    : selectedMuscleFilter !== "todos"
+                    ? `No tienes rutinas para "${selectedMuscleFilter}".`
+                    : "No tienes rutinas activas con los filtros actuales."}
+                </p>
+                <p className="text-slate-500 text-[11px] max-w-md mx-auto">
+                  Prueba seleccionando "Todas" o "General" para revisar el plan de entrenamiento disponible.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredRoutines.map((r) => {
+                  const isCompleted = completedDaysThisWeek.includes(r.day);
+                  const isToday = r.day === todayDayName;
+                  const isSpecificallyAssigned = clientAssignedIds.has(r.id);
 
-                return (
-                  <div
-                    key={r.id}
-                    className={`rounded-2xl p-4 border transition-all ${
-                      isCompleted
-                        ? "bg-slate-950/90 border-emerald-500/40 shadow-sm"
-                        : isToday
-                        ? "bg-slate-950 border-emerald-500/60 ring-1 ring-emerald-500/20"
-                        : "bg-slate-950/70 border-slate-800 hover:border-slate-700"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                          {r.day}
-                        </span>
-                        {isToday && (
-                          <span className="text-[10px] font-bold font-mono text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded">
-                            ¡Hoy!
+                  return (
+                    <div
+                      key={r.id}
+                      className={`rounded-2xl p-4 border transition-all flex flex-col justify-between ${
+                        isCompleted
+                          ? "bg-slate-950/90 border-emerald-500/40 shadow-sm"
+                          : isToday
+                          ? "bg-slate-950 border-emerald-500/60 ring-1 ring-emerald-500/20"
+                          : "bg-slate-950/70 border-slate-800 hover:border-slate-700"
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              {r.day}
+                            </span>
+                            {isToday && (
+                              <span className="text-[10px] font-bold font-mono text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded">
+                                ¡Hoy!
+                              </span>
+                            )}
+                            {isSpecificallyAssigned ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1 font-mono">
+                                ★ Asignada por Gym
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1 font-mono">
+                                🏢 General Sede
+                              </span>
+                            )}
+                          </div>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                            {r.muscleGroup}
                           </span>
-                        )}
-                      </div>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
-                        {r.muscleGroup}
-                      </span>
-                    </div>
+                        </div>
 
                     <h3 className="font-bold text-white text-sm mb-1">{r.name}</h3>
                     <p className="text-[11px] text-slate-400 mb-3 flex items-center gap-1.5">
@@ -708,6 +847,7 @@ export const ClientView: React.FC<ClientViewProps> = ({
                         💡 {r.notes}
                       </p>
                     )}
+                    </div>
 
                     {/* Checkbox button */}
                     <button
@@ -725,6 +865,7 @@ export const ClientView: React.FC<ClientViewProps> = ({
                 );
               })}
             </div>
+          )}
 
             {/* SECCIÓN EDITAR Y ELIMINAR RUTINAS REALIZADAS */}
             <div className="pt-6 border-t border-slate-800">
