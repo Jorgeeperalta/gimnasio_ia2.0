@@ -32,6 +32,30 @@ import { ArchitectureModal } from "./components/ArchitectureModal";
 import { LoginView } from "./components/Auth/LoginView";
 
 export default function App() {
+  const callSuperAdminApi = async (action: string, payload: unknown) => {
+    const response = await fetch(`/api/super-admin?action=${encodeURIComponent(action)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "No se pudo completar la operación");
+    return data;
+  };
+
+  const isDatabaseId = (id: string) => /^\d+$/.test(id);
+
+  const callGymAdminApi = async (action: string, payload: unknown) => {
+    const response = await fetch(`/api/gym-admin?action=${encodeURIComponent(action)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "No se pudo completar la operación");
+    return data;
+  };
+
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
     try {
       const saved = localStorage.getItem("gymcore_active_user");
@@ -98,6 +122,90 @@ export default function App() {
   const [tips, setTips] = useState<GymTip[]>(INITIAL_TIPS);
   const [isArchitectureModalOpen, setIsArchitectureModalOpen] = useState(false);
 
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let cancelled = false;
+    const loadGyms = async () => {
+      try {
+        const response = await fetch("/api/backend?action=get_gimnasios");
+        if (!response.ok) throw new Error("No se pudieron cargar los gimnasios");
+        const rows = (await response.json()) as Array<Record<string, unknown>>;
+        if (cancelled) return;
+
+        const databaseGyms: Gym[] = rows.map((row) => ({
+          id: String(row.id),
+          name: String(row.nombre || ""),
+          code: String(row.codigo || ""),
+          address: String(row.direccion || "S/D"),
+          phone: String(row.telefono || "-"),
+          email: String(row.email || "-"),
+          monthlyFee: Number(row.cuota_plataforma || 0),
+          billingStatus: (row.estado_cobro || "al_dia") as Gym["billingStatus"],
+          totalMembers: Number(row.total_clientes || 0),
+          plan: (row.plan_suscripcion || "Pro") as Gym["plan"],
+          createdAt: String(row.created_at || ""),
+        }));
+
+        setGyms(databaseGyms);
+        if (databaseGyms.length > 0 && !databaseGyms.some((gym) => gym.id === selectedGymId)) {
+          setSelectedGymId(databaseGyms[0].id);
+        }
+      } catch (error) {
+        console.error("No se pudieron cargar los gimnasios desde MySQL:", error);
+      }
+    };
+
+    void loadGyms();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser, selectedGymId]);
+
+  useEffect(() => {
+    if (!currentUser || !/^\d+$/.test(selectedGymId)) return;
+
+    let cancelled = false;
+    const loadGymClients = async () => {
+      try {
+        const response = await fetch(`/api/backend?action=get_clientes_gimnasio&gym_id=${selectedGymId}`);
+        if (!response.ok) throw new Error("No se pudieron cargar los clientes de la sede");
+        const rows = (await response.json()) as Array<Record<string, unknown>>;
+        if (cancelled) return;
+
+        const gym = gyms.find((item) => item.id === selectedGymId);
+        const databaseClients: Client[] = rows.map((row) => ({
+          id: String(row.id),
+          gymId: String(row.gimnasio_id),
+          gymName: gym?.name || "Gimnasio",
+          name: String(row.nombre || ""),
+          email: String(row.email || ""),
+          phone: String(row.telefono || "-"),
+          membershipPlan: String(row.plan_membresia || "Plan Mensual Estándar"),
+          monthlyFee: Number(row.cuota_mensual || 0),
+          debtAmount: Number(row.saldo_deuda || 0),
+          status: (row.estado || "activo") as Client["status"],
+          joinDate: String(row.created_at || ""),
+        }));
+
+        setClients((previous) => {
+          const otherGymClients = previous.filter((client) => client.gymId !== selectedGymId);
+          return [...databaseClients, ...otherGymClients];
+        });
+        if (databaseClients.length > 0 && !databaseClients.some((client) => client.id === selectedClientId)) {
+          setSelectedClientId(databaseClients[0].id);
+        }
+      } catch (error) {
+        console.error("No se pudieron cargar los clientes desde MySQL:", error);
+      }
+    };
+
+    void loadGymClients();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser?.role, selectedGymId, gyms]);
+
   // Authentication Handlers
   const handleLogin = (user: UserAccount) => {
     setCurrentUser(user);
@@ -128,11 +236,32 @@ export default function App() {
   const currentClient = clients.find((c) => c.id === selectedClientId) || clients[0];
 
   // Handlers for User Management
-  const handleAddUser = (newUser: UserAccount) => {
+  const handleAddUser = async (newUser: UserAccount) => {
+    const canPersist =
+      (!newUser.gymId || isDatabaseId(newUser.gymId)) &&
+      (!newUser.clientId || isDatabaseId(newUser.clientId));
+    if (canPersist) {
+      try {
+        const result = await callSuperAdminApi("create_user", { user: newUser });
+        setUsers((prev) => [{ ...newUser, id: result.id }, ...prev]);
+        return;
+      } catch (error) {
+        console.error("No se pudo crear el usuario:", error);
+        return;
+      }
+    }
     setUsers((prev) => [newUser, ...prev]);
   };
 
-  const handleEditUser = (updatedUser: UserAccount) => {
+  const handleEditUser = async (updatedUser: UserAccount) => {
+    if (isDatabaseId(updatedUser.id)) {
+      try {
+        await callSuperAdminApi("update_user", { user: updatedUser });
+      } catch (error) {
+        console.error("No se pudo editar el usuario:", error);
+        return;
+      }
+    }
     setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
     if (currentUser && currentUser.id === updatedUser.id) {
       setCurrentUser(updatedUser);
@@ -140,7 +269,15 @@ export default function App() {
     }
   };
 
-  const handleDeleteUser = (userId: string) => {
+  const handleDeleteUser = async (userId: string) => {
+    if (isDatabaseId(userId)) {
+      try {
+        await callSuperAdminApi("delete_user", { id: userId });
+      } catch (error) {
+        console.error("No se pudo eliminar el usuario:", error);
+        return;
+      }
+    }
     setUsers((prev) => prev.filter((u) => u.id !== userId));
   };
 
@@ -149,7 +286,10 @@ export default function App() {
     newGymData: Omit<Gym, "id" | "createdAt">,
     adminCredentials?: { name: string; username: string; password: string; email: string }
   ) => {
-    const gymId = `gym-${Date.now()}`;
+    void (async () => {
+      try {
+        const result = await callSuperAdminApi("create_gym", { gym: newGymData, adminCredentials });
+        const gymId = result.id as string;
     const newGym: Gym = {
       ...newGymData,
       id: gymId,
@@ -159,7 +299,7 @@ export default function App() {
 
     if (adminCredentials && adminCredentials.username && adminCredentials.password) {
       const newAdminUser: UserAccount = {
-        id: `usr-admin-${Date.now()}`,
+        id: result.userId || `usr-admin-${Date.now()}`,
         username: adminCredentials.username.trim().toLowerCase(),
         password: adminCredentials.password,
         name: adminCredentials.name || `Admin ${newGym.name}`,
@@ -169,9 +309,21 @@ export default function App() {
       };
       setUsers((prev) => [newAdminUser, ...prev]);
     }
+      } catch (error) {
+        console.error("No se pudo crear el gimnasio:", error);
+      }
+    })();
   };
 
-  const handleEditGym = (updatedGym: Gym) => {
+  const handleEditGym = async (updatedGym: Gym) => {
+    if (isDatabaseId(updatedGym.id)) {
+      try {
+        await callSuperAdminApi("update_gym", { gym: updatedGym });
+      } catch (error) {
+        console.error("No se pudo editar el gimnasio:", error);
+        return;
+      }
+    }
     setGyms((prev) => prev.map((g) => (g.id === updatedGym.id ? updatedGym : g)));
     setGymBillings((prev) =>
       prev.map((b) => (b.gymId === updatedGym.id ? { ...b, gymName: updatedGym.name } : b))
@@ -181,7 +333,15 @@ export default function App() {
     );
   };
 
-  const handleDeleteGym = (gymId: string) => {
+  const handleDeleteGym = async (gymId: string) => {
+    if (isDatabaseId(gymId)) {
+      try {
+        await callSuperAdminApi("delete_gym", { id: gymId });
+      } catch (error) {
+        console.error("No se pudo eliminar el gimnasio:", error);
+        return;
+      }
+    }
     setGyms((prev) => prev.filter((g) => g.id !== gymId));
     setGymBillings((prev) => prev.filter((b) => b.gymId !== gymId));
     setClients((prev) => prev.filter((c) => c.gymId !== gymId));
@@ -194,13 +354,30 @@ export default function App() {
     }
   };
 
-  const handleUpdateGymStatus = (gymId: string, status: Gym["billingStatus"]) => {
+  const handleUpdateGymStatus = async (gymId: string, status: Gym["billingStatus"]) => {
+    const gym = gyms.find((item) => item.id === gymId);
+    if (gym && isDatabaseId(gymId)) {
+      try {
+        await callSuperAdminApi("update_gym", { gym: { ...gym, billingStatus: status } });
+      } catch (error) {
+        console.error("No se pudo actualizar el estado del gimnasio:", error);
+        return;
+      }
+    }
     setGyms((prev) =>
       prev.map((g) => (g.id === gymId ? { ...g, billingStatus: status } : g))
     );
   };
 
-  const handleMarkBillPaid = (billId: string) => {
+  const handleMarkBillPaid = async (billId: string) => {
+    if (isDatabaseId(billId)) {
+      try {
+        await callSuperAdminApi("mark_billing_paid", { id: billId });
+      } catch (error) {
+        console.error("No se pudo marcar el cobro como pagado:", error);
+        return;
+      }
+    }
     const today = new Date().toISOString().split("T")[0];
     setGymBillings((prev) =>
       prev.map((b) =>
@@ -211,7 +388,7 @@ export default function App() {
     );
   };
 
-  const handleGenerateBill = (gymId: string, month: string, amount: number) => {
+  const handleGenerateBill = async (gymId: string, month: string, amount: number) => {
     const targetGym = gyms.find((g) => g.id === gymId);
     const newBill: GymBilling = {
       id: `bill-${Date.now()}`,
@@ -223,21 +400,46 @@ export default function App() {
       status: "pendiente",
       invoiceNumber: `INV-${Date.now().toString().slice(-4)}`,
     };
+    if (isDatabaseId(gymId)) {
+      try {
+        const result = await callSuperAdminApi("create_billing", { bill: newBill });
+        newBill.id = result.id;
+      } catch (error) {
+        console.error("No se pudo generar el cobro:", error);
+        return;
+      }
+    }
     setGymBillings((prev) => [newBill, ...prev]);
   };
 
-  const handleEditGymBilling = (updatedBill: GymBilling) => {
+  const handleEditGymBilling = async (updatedBill: GymBilling) => {
+    if (isDatabaseId(updatedBill.id)) {
+      try {
+        await callSuperAdminApi("update_billing", { bill: updatedBill });
+      } catch (error) {
+        console.error("No se pudo editar el cobro:", error);
+        return;
+      }
+    }
     setGymBillings((prev) =>
       prev.map((b) => (b.id === updatedBill.id ? updatedBill : b))
     );
   };
 
-  const handleDeleteGymBilling = (billId: string) => {
+  const handleDeleteGymBilling = async (billId: string) => {
+    if (isDatabaseId(billId)) {
+      try {
+        await callSuperAdminApi("delete_billing", { id: billId });
+      } catch (error) {
+        console.error("No se pudo eliminar el cobro:", error);
+        return;
+      }
+    }
     setGymBillings((prev) => prev.filter((b) => b.id !== billId));
   };
 
   // Handlers for Gym Admin & Global Clients
-  const handleAddClient = (
+  const handleAddClient = async (
     newClientData: Omit<Client, "id" | "joinDate">,
     userCredentials?: { username: string; password: string }
   ) => {
@@ -247,7 +449,21 @@ export default function App() {
       id: clientId,
       joinDate: new Date().toISOString().split("T")[0],
     };
-    setClients((prev) => [newClient, ...prev]);
+    if (isDatabaseId(newClientData.gymId)) {
+      try {
+        const result = await callGymAdminApi("create_client", { client: newClientData, credentials: userCredentials });
+        newClient.id = result.id;
+        setClients((prev) => [newClient, ...prev]);
+        if (result.userId) {
+          setUsers((prev) => [{ id: result.userId, username: userCredentials?.username || "", password: userCredentials?.password || "", name: newClient.name, role: "client", email: newClient.email, gymId: newClient.gymId, clientId: result.id }, ...prev]);
+        }
+      } catch (error) {
+        console.error("No se pudo crear el cliente:", error);
+        return;
+      }
+    } else {
+      setClients((prev) => [newClient, ...prev]);
+    }
     // update gym totalMembers count
     setGyms((prev) =>
       prev.map((g) =>
@@ -272,7 +488,15 @@ export default function App() {
     }
   };
 
-  const handleEditClient = (updatedClient: Client) => {
+  const handleEditClient = async (updatedClient: Client) => {
+    if (isDatabaseId(updatedClient.id)) {
+      try {
+        await callSuperAdminApi("update_client", { client: updatedClient });
+      } catch (error) {
+        console.error("No se pudo editar el cliente:", error);
+        return;
+      }
+    }
     setClients((prev) =>
       prev.map((c) => (c.id === updatedClient.id ? updatedClient : c))
     );
@@ -285,7 +509,15 @@ export default function App() {
     );
   };
 
-  const handleDeleteClient = (clientId: string) => {
+  const handleDeleteClient = async (clientId: string) => {
+    if (isDatabaseId(clientId)) {
+      try {
+        await callSuperAdminApi("delete_client", { id: clientId });
+      } catch (error) {
+        console.error("No se pudo eliminar el cliente:", error);
+        return;
+      }
+    }
     const target = clients.find((c) => c.id === clientId);
     if (target) {
       setGyms((prev) =>
@@ -307,12 +539,21 @@ export default function App() {
     }
   };
 
-  const handleAddRoutine = (routineData: Omit<Routine, "id">) => {
+  const handleAddRoutine = async (routineData: Omit<Routine, "id">) => {
     const routineId = `rot-${Date.now()}`;
     const newRoutine: Routine = {
       ...routineData,
       id: routineId,
     };
+    if (isDatabaseId(routineData.gymId)) {
+      try {
+        const result = await callGymAdminApi("create_routine", { routine: routineData });
+        newRoutine.id = result.id;
+      } catch (error) {
+        console.error("No se pudo crear la rutina:", error);
+        return;
+      }
+    }
     setRoutines((prev) => [...prev, newRoutine]);
 
     // If routine is assigned to specific clients, sync them
@@ -336,7 +577,15 @@ export default function App() {
     }
   };
 
-  const handleEditRoutine = (updatedRoutine: Routine) => {
+  const handleEditRoutine = async (updatedRoutine: Routine) => {
+    if (isDatabaseId(updatedRoutine.id)) {
+      try {
+        await callGymAdminApi("update_routine", { routine: updatedRoutine });
+      } catch (error) {
+        console.error("No se pudo editar la rutina:", error);
+        return;
+      }
+    }
     setRoutines((prev) =>
       prev.map((r) => (r.id === updatedRoutine.id ? updatedRoutine : r))
     );
@@ -371,7 +620,15 @@ export default function App() {
     );
   };
 
-  const handleDeleteRoutine = (routineId: string) => {
+  const handleDeleteRoutine = async (routineId: string) => {
+    if (isDatabaseId(routineId)) {
+      try {
+        await callGymAdminApi("delete_routine", { id: routineId });
+      } catch (error) {
+        console.error("No se pudo eliminar la rutina:", error);
+        return;
+      }
+    }
     setRoutines((prev) => prev.filter((r) => r.id !== routineId));
     setCompletedWorkouts((prev) => prev.filter((w) => w.routineId !== routineId));
     // Clean up client assignments
@@ -453,12 +710,21 @@ export default function App() {
     );
   };
 
-  const handleAddPayment = (paymentData: Omit<Payment, "id" | "date">) => {
+  const handleAddPayment = async (paymentData: Omit<Payment, "id" | "date">) => {
     const newPayment: Payment = {
       ...paymentData,
       id: `pay-${Date.now()}`,
       date: new Date().toISOString().split("T")[0],
     };
+    if (isDatabaseId(paymentData.gymId) && isDatabaseId(paymentData.clientId)) {
+      try {
+        const result = await callGymAdminApi("create_payment", { payment: newPayment });
+        newPayment.id = result.id;
+      } catch (error) {
+        console.error("No se pudo registrar el pago:", error);
+        return;
+      }
+    }
     setPayments((prev) => [newPayment, ...prev]);
 
     // Automatically reduce debt from client
@@ -471,17 +737,33 @@ export default function App() {
     );
   };
 
-  const handleEditPayment = (updatedPayment: Payment) => {
+  const handleEditPayment = async (updatedPayment: Payment) => {
+    if (isDatabaseId(updatedPayment.id)) {
+      try {
+        await callGymAdminApi("update_payment", { payment: updatedPayment });
+      } catch (error) {
+        console.error("No se pudo editar el pago:", error);
+        return;
+      }
+    }
     setPayments((prev) =>
       prev.map((p) => (p.id === updatedPayment.id ? updatedPayment : p))
     );
   };
 
-  const handleDeletePayment = (paymentId: string) => {
+  const handleDeletePayment = async (paymentId: string) => {
+    if (isDatabaseId(paymentId)) {
+      try {
+        await callGymAdminApi("delete_payment", { id: paymentId });
+      } catch (error) {
+        console.error("No se pudo eliminar el pago:", error);
+        return;
+      }
+    }
     setPayments((prev) => prev.filter((p) => p.id !== paymentId));
   };
 
-  const handleAddExtraPurchase = (
+  const handleAddExtraPurchase = async (
     purchaseData: Omit<ClientExtraPurchase, "id" | "date">
   ) => {
     const newPurchase: ClientExtraPurchase = {
@@ -489,6 +771,15 @@ export default function App() {
       id: `pur-${Date.now()}`,
       date: new Date().toISOString().split("T")[0],
     };
+    if (isDatabaseId(purchaseData.gymId) && isDatabaseId(purchaseData.clientId) && isDatabaseId(purchaseData.itemId)) {
+      try {
+        const result = await callGymAdminApi("create_purchase", { purchase: newPurchase });
+        newPurchase.id = result.id;
+      } catch (error) {
+        console.error("No se pudo registrar la compra extra:", error);
+        return;
+      }
+    }
     setExtraPurchases((prev) => [newPurchase, ...prev]);
 
     // If purchase was not paid immediately, add to client debt
@@ -503,50 +794,116 @@ export default function App() {
     }
   };
 
-  const handleEditExtraPurchase = (updatedPurchase: ClientExtraPurchase) => {
+  const handleEditExtraPurchase = async (updatedPurchase: ClientExtraPurchase) => {
+    if (isDatabaseId(updatedPurchase.id)) {
+      try {
+        await callGymAdminApi("update_purchase", { purchase: updatedPurchase });
+      } catch (error) {
+        console.error("No se pudo editar la compra extra:", error);
+        return;
+      }
+    }
     setExtraPurchases((prev) =>
       prev.map((p) => (p.id === updatedPurchase.id ? updatedPurchase : p))
     );
   };
 
-  const handleDeleteExtraPurchase = (purchaseId: string) => {
+  const handleDeleteExtraPurchase = async (purchaseId: string) => {
+    if (isDatabaseId(purchaseId)) {
+      try {
+        await callGymAdminApi("delete_purchase", { id: purchaseId });
+      } catch (error) {
+        console.error("No se pudo eliminar la compra extra:", error);
+        return;
+      }
+    }
     setExtraPurchases((prev) => prev.filter((p) => p.id !== purchaseId));
   };
 
-  const handleAddExtraItem = (itemData: Omit<ExtraItem, "id">) => {
+  const handleAddExtraItem = async (itemData: Omit<ExtraItem, "id">) => {
     const newItem: ExtraItem = {
       ...itemData,
       id: `ext-${Date.now()}`,
     };
+    if (isDatabaseId(itemData.gymId)) {
+      try {
+        const result = await callGymAdminApi("create_extra_item", { item: itemData });
+        newItem.id = result.id;
+      } catch (error) {
+        console.error("No se pudo crear el extra:", error);
+        return;
+      }
+    }
     setExtraItems((prev) => [...prev, newItem]);
   };
 
-  const handleEditExtraItem = (updatedItem: ExtraItem) => {
+  const handleEditExtraItem = async (updatedItem: ExtraItem) => {
+    if (isDatabaseId(updatedItem.id)) {
+      try {
+        await callGymAdminApi("update_extra_item", { item: updatedItem });
+      } catch (error) {
+        console.error("No se pudo editar el extra:", error);
+        return;
+      }
+    }
     setExtraItems((prev) =>
       prev.map((i) => (i.id === updatedItem.id ? updatedItem : i))
     );
   };
 
-  const handleDeleteExtraItem = (itemId: string) => {
+  const handleDeleteExtraItem = async (itemId: string) => {
+    if (isDatabaseId(itemId)) {
+      try {
+        await callGymAdminApi("delete_extra_item", { id: itemId });
+      } catch (error) {
+        console.error("No se pudo eliminar el extra:", error);
+        return;
+      }
+    }
     setExtraItems((prev) => prev.filter((i) => i.id !== itemId));
   };
 
-  const handleAddTip = (tipData: Omit<GymTip, "id" | "date">) => {
+  const handleAddTip = async (tipData: Omit<GymTip, "id" | "date">) => {
     const newTip: GymTip = {
       ...tipData,
       id: `tip-${Date.now()}`,
       date: new Date().toISOString().split("T")[0],
     };
+    if (isDatabaseId(tipData.gymId)) {
+      try {
+        const result = await callGymAdminApi("create_tip", { tip: tipData });
+        newTip.id = result.id;
+      } catch (error) {
+        console.error("No se pudo crear el tip:", error);
+        return;
+      }
+    }
     setTips((prev) => [...prev, newTip]);
   };
 
-  const handleEditTip = (updatedTip: GymTip) => {
+  const handleEditTip = async (updatedTip: GymTip) => {
+    if (isDatabaseId(updatedTip.id)) {
+      try {
+        await callGymAdminApi("update_tip", { tip: updatedTip });
+      } catch (error) {
+        console.error("No se pudo editar el tip:", error);
+        return;
+      }
+    }
     setTips((prev) =>
       prev.map((t) => (t.id === updatedTip.id ? updatedTip : t))
     );
   };
 
-  const handleDeleteTip = (tipId: string) => {
+  const handleDeleteTip = async (tipId: string) => {
+    if (isDatabaseId(tipId)) {
+      try {
+        await callGymAdminApi("delete_tip", { id: tipId });
+      } catch (error) {
+        console.error("No se pudo eliminar el tip:", error);
+        return;
+      }
+    }
     setTips((prev) => prev.filter((t) => t.id !== tipId));
   };
 
@@ -716,12 +1073,7 @@ export default function App() {
             GymCore SaaS • Sesión: <strong className="text-white">{currentUser.name}</strong> (@{currentUser.username})
           </p>
           <div className="flex items-center space-x-4">
-            <button
-              onClick={() => setIsArchitectureModalOpen(true)}
-              className="text-emerald-400 hover:text-emerald-300 font-semibold underline cursor-pointer transition-colors"
-            >
-              Ver Esquema MySQL &amp; Código PHP
-            </button>
+        
             <span className="text-slate-700">•</span>
             <button
               onClick={handleLogout}

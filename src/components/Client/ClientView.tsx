@@ -103,7 +103,7 @@ export const ClientView: React.FC<ClientViewProps> = ({
     {
       id: "init-1",
       sender: "deepseek",
-      text: `¡Hola **${currentClient.name}**! 👋 Soy tu **DeepSeek Coach** de **${currentGym.name}**.\n\nHoy es **${todayDayName}**. Puedes preguntarme qué rutina te toca hoy, elegir entrenar por grupo muscular (Pecho, Espalda, Piernas, etc.), revisar cuántas rutinas has completado esta semana o consultar tu control de pagos y deuda.\n\n¿Qué quieres entrenar hoy?`,
+      text: `¡Hola **${currentClient.name}**! 👋 Soy tu **Coach IA** de **${currentGym.name}**.\n\nHoy es **${todayDayName}**. Puedes preguntarme qué rutina te toca hoy, elegir entrenar por grupo muscular (Pecho, Espalda, Piernas, etc.), revisar cuántas rutinas has completado esta semana o consultar tu control de pagos y deuda.\n\n¿Qué quieres entrenar hoy?`,
       thought: `Inicializando contexto del atleta: ${currentClient.name} (${currentGym.name}). Estado de deuda: $${currentClient.debtAmount} USD. Rutinas completadas esta semana: ${completedDaysThisWeek.length}.`,
       timestamp: "Ahora",
     },

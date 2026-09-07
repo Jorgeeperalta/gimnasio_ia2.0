@@ -158,7 +158,6 @@ CREATE TABLE IF NOT EXISTS tips (
   FOREIGN KEY (gimnasio_id) REFERENCES gimnasios(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 `;
-
 export const PHP_BACKEND_CODE = `<?php
 /**
  * API REST PHP Multi-Gimnasio & DeepSeek Coach
@@ -176,10 +175,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 // Configuración de Base de Datos MySQL
-$dbHost = getenv('DB_HOST') ?: '127.0.0.1';
+$dbHost = getenv('DB_HOST') ?: '127.0.0.1:81';
 $dbName = getenv('DB_NAME') ?: 'gym_system_multigym';
 $dbUser = getenv('DB_USER') ?: 'root';
-$dbPass = getenv('DB_PASS') ?: '';
+$dbPass = getenv('DB_PASS') ?: 'root';
 
 try {
     $pdo = new PDO("mysql:host=$dbHost;dbname=$dbName;charset=utf8mb4", $dbUser, $dbPass, [
@@ -201,6 +200,19 @@ switch ($action) {
         $stmt = $pdo->query("SELECT g.*, (SELECT COUNT(*) FROM clientes c WHERE c.gimnasio_id = g.id) as total_clientes FROM gimnasios g");
         echo json_encode($stmt->fetchAll());
         break;
+
+    case 'get_gym':
+      $gymId = (int)($_GET['gym_id'] ?? 0);
+      $stmt = $pdo->prepare("SELECT g.*, (SELECT COUNT(*) FROM clientes c WHERE c.gimnasio_id = g.id) as total_clientes FROM gimnasios g WHERE g.id = ?");
+      $stmt->execute([$gymId]);
+      $gym = $stmt->fetch();
+      if (!$gym) {
+        http_response_code(404);
+        echo json_encode(["error" => "Gimnasio no encontrado"]);
+      } else {
+        echo json_encode($gym);
+      }
+      break;
 
     case 'get_cobros_gimnasios':
         $stmt = $pdo->query("SELECT c.*, g.nombre as gimnasio_nombre FROM cobros_gimnasio c JOIN gimnasios g ON c.gimnasio_id = g.id ORDER BY c.fecha_vencimiento DESC");
