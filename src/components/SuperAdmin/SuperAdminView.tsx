@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Gym, GymBilling, Client, UserAccount, UserRole } from "../../types";
+import { Gym, GymBilling, Client, UserAccount, UserRole, GymThemeConfig } from "../../types";
 import {
   Building2,
   Users,
@@ -21,7 +21,16 @@ import {
   Lock,
   RefreshCw,
   UserCheck,
+  Palette,
+  Code,
+  Sparkles,
 } from "lucide-react";
+import {
+  PRESET_GYM_THEMES,
+  hexToRgb,
+  generateDefaultGymCss,
+  getGymTheme,
+} from "../../data/gymThemes";
 
 interface SuperAdminViewProps {
   gyms: Gym[];
@@ -87,7 +96,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
     name: string;
   } | null>(null);
 
-  // Form states for new gym (with admin account)
+  // Form states for new gym (with admin account and custom CSS)
   const [newGymName, setNewGymName] = useState("");
   const [newGymCode, setNewGymCode] = useState("");
   const [newGymAddress, setNewGymAddress] = useState("");
@@ -100,6 +109,72 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
   const [newAdminPassword, setNewAdminPassword] = useState("Gym123");
   const [newAdminEmail, setNewAdminEmail] = useState("");
   const [showAdminPassword, setShowAdminPassword] = useState(false);
+
+  // Theme & CSS Form states for new gym
+  const [newGymThemePreset, setNewGymThemePreset] = useState<string>("emerald_matrix");
+  const [newGymPrimaryColor, setNewGymPrimaryColor] = useState<string>("#10b981");
+  const [newGymAccentColor, setNewGymAccentColor] = useState<string>("#34d399");
+  const [newGymRadius, setNewGymRadius] = useState<"sharp" | "rounded" | "curved" | "pill">("rounded");
+  const [newGymFontVibe, setNewGymFontVibe] = useState<"sport_tech" | "bold_power" | "clean_modern" | "cyber_mono">("sport_tech");
+  const [newGymCustomCss, setNewGymCustomCss] = useState<string>(() =>
+    generateDefaultGymCss("Nuevo Gimnasio", "#10b981", "16, 185, 129", "rounded")
+  );
+  const [showNewGymCssEditor, setShowNewGymCssEditor] = useState(false);
+
+  // Theme & CSS Form states for editing gym
+  const [editGymThemePreset, setEditGymThemePreset] = useState<string>("emerald_matrix");
+  const [editGymPrimaryColor, setEditGymPrimaryColor] = useState<string>("#10b981");
+  const [editGymAccentColor, setEditGymAccentColor] = useState<string>("#34d399");
+  const [editGymRadius, setEditGymRadius] = useState<"sharp" | "rounded" | "curved" | "pill">("rounded");
+  const [editGymFontVibe, setEditGymFontVibe] = useState<"sport_tech" | "bold_power" | "clean_modern" | "cyber_mono">("sport_tech");
+  const [editGymCustomCss, setEditGymCustomCss] = useState<string>("");
+  const [showEditGymCssEditor, setShowEditGymCssEditor] = useState(false);
+
+  const startEditingGym = (gym: Gym) => {
+    const t = getGymTheme(gym);
+    setEditingGym(gym);
+    setEditGymThemePreset(t.themeId || "emerald_matrix");
+    setEditGymPrimaryColor(t.primaryColor || "#10b981");
+    setEditGymAccentColor(t.accentColor || "#34d399");
+    setEditGymRadius(t.borderRadius || "rounded");
+    setEditGymFontVibe(t.fontVibe || "sport_tech");
+    setEditGymCustomCss(
+      t.customCss ||
+        generateDefaultGymCss(
+          gym.name,
+          t.primaryColor,
+          t.primaryRgb || hexToRgb(t.primaryColor),
+          t.borderRadius
+        )
+    );
+    setShowEditGymCssEditor(false);
+  };
+
+  const handleSelectPreset = (presetId: string, isEdit = false) => {
+    const found = PRESET_GYM_THEMES.find((p) => p.themeId === presetId);
+    if (!found) return;
+    if (isEdit) {
+      setEditGymThemePreset(presetId);
+      setEditGymPrimaryColor(found.primaryColor);
+      setEditGymAccentColor(found.accentColor);
+      setEditGymRadius(found.borderRadius);
+      setEditGymFontVibe(found.fontVibe || "sport_tech");
+      const rgb = found.primaryRgb || hexToRgb(found.primaryColor);
+      setEditGymCustomCss(
+        generateDefaultGymCss(editingGym?.name || found.themeName, found.primaryColor, rgb, found.borderRadius)
+      );
+    } else {
+      setNewGymThemePreset(presetId);
+      setNewGymPrimaryColor(found.primaryColor);
+      setNewGymAccentColor(found.accentColor);
+      setNewGymRadius(found.borderRadius);
+      setNewGymFontVibe(found.fontVibe || "sport_tech");
+      const rgb = found.primaryRgb || hexToRgb(found.primaryColor);
+      setNewGymCustomCss(
+        generateDefaultGymCss(newGymName || found.themeName, found.primaryColor, rgb, found.borderRadius)
+      );
+    }
+  };
 
   // Form states for new user
   const [userFormName, setUserFormName] = useState("");
@@ -123,6 +198,19 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
   const handleCreateGym = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGymName || !newGymCode) return;
+    const primaryRgb = hexToRgb(newGymPrimaryColor);
+    const selectedPreset = PRESET_GYM_THEMES.find((p) => p.themeId === newGymThemePreset);
+    const gymTheme: GymThemeConfig = {
+      themeId: newGymThemePreset,
+      themeName: selectedPreset ? selectedPreset.themeName : `Personalizado (${newGymPrimaryColor})`,
+      primaryColor: newGymPrimaryColor,
+      accentColor: newGymAccentColor,
+      primaryRgb: primaryRgb,
+      borderRadius: newGymRadius,
+      fontVibe: newGymFontVibe,
+      customCss: newGymCustomCss,
+    };
+
     onAddGym(
       {
         name: newGymName,
@@ -134,6 +222,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
         billingStatus: "al_dia",
         totalMembers: 0,
         plan: newGymPlan,
+        theme: gymTheme,
       },
       newAdminUsername
         ? {
@@ -153,7 +242,37 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
     setNewAdminUsername("");
     setNewAdminPassword("Gym123");
     setNewAdminEmail("");
+    // Reset theme
+    setNewGymThemePreset("emerald_matrix");
+    setNewGymPrimaryColor("#10b981");
+    setNewGymAccentColor("#34d399");
+    setNewGymRadius("rounded");
+    setNewGymCustomCss(generateDefaultGymCss("Nuevo Gimnasio", "#10b981", "16, 185, 129", "rounded"));
+    setShowNewGymCssEditor(false);
     setIsAddGymOpen(false);
+  };
+
+  const handleUpdateGymSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingGym) return;
+    const primaryRgb = hexToRgb(editGymPrimaryColor);
+    const selectedPreset = PRESET_GYM_THEMES.find((p) => p.themeId === editGymThemePreset);
+    const updatedTheme: GymThemeConfig = {
+      themeId: editGymThemePreset,
+      themeName: selectedPreset ? selectedPreset.themeName : `Personalizado (${editGymPrimaryColor})`,
+      primaryColor: editGymPrimaryColor,
+      accentColor: editGymAccentColor,
+      primaryRgb: primaryRgb,
+      borderRadius: editGymRadius,
+      fontVibe: editGymFontVibe,
+      customCss: editGymCustomCss,
+    };
+
+    onEditGym({
+      ...editingGym,
+      theme: updatedTheme,
+    });
+    setEditingGym(null);
   };
 
   const handleCreateUser = (e: React.FormEvent) => {
@@ -422,6 +541,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
               <thead className="bg-slate-950/70 text-slate-400 uppercase font-semibold text-[10px] tracking-wider border-b border-slate-800">
                 <tr>
                   <th className="py-3 px-4">Gimnasio</th>
+                  <th className="py-3 px-4">Estilo & CSS</th>
                   <th className="py-3 px-4">Plan SaaS</th>
                   <th className="py-3 px-4">Cuota Mensual</th>
                   <th className="py-3 px-4">Socios Activos</th>
@@ -430,72 +550,94 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {filteredGyms.map((gym) => (
-                  <tr key={gym.id} className="hover:bg-slate-850/40 transition-colors">
-                    <td className="py-3.5 px-4">
-                      <div className="font-bold text-white text-sm">{gym.name}</div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">
-                        Código: <span className="font-mono font-semibold text-emerald-400">{gym.code}</span> • {gym.address}
-                      </div>
-                      <div className="text-[11px] text-slate-500">{gym.email} • {gym.phone}</div>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span className="px-2.5 py-1 rounded text-[10px] font-bold bg-slate-800 text-emerald-400 border border-emerald-500/30 font-mono">
-                        {gym.plan}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 font-mono font-bold text-white">
-                      ${gym.monthlyFee} USD/mes
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span className="font-mono font-semibold text-white">{gym.totalMembers}</span> atletas
-                    </td>
-                    <td className="py-3.5 px-4">
-                      {gym.billingStatus === "al_dia" && (
-                        <span className="inline-flex items-center gap-1.5 text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-1 rounded border border-emerald-500/30 text-[10px] font-mono">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Al Día
+                {filteredGyms.map((gym) => {
+                  const gymTheme = getGymTheme(gym);
+                  return (
+                    <tr key={gym.id} className="hover:bg-slate-850/40 transition-colors">
+                      <td className="py-3.5 px-4">
+                        <div className="font-bold text-white text-sm">{gym.name}</div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          Código: <span className="font-mono font-semibold text-emerald-400">{gym.code}</span> • {gym.address}
+                        </div>
+                        <div className="text-[11px] text-slate-500">{gym.email} • {gym.phone}</div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-3.5 h-3.5 rounded-full border border-white/20 flex-shrink-0 shadow-xs"
+                            style={{ backgroundColor: gymTheme.primaryColor }}
+                            title={gymTheme.primaryColor}
+                          />
+                          <div>
+                            <div className="font-semibold text-white text-[11px] font-mono leading-tight">
+                              {gymTheme.themeName.split(" ")[0]}
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1 mt-0.5">
+                              <span style={{ color: gymTheme.primaryColor }}>{gymTheme.primaryColor}</span>
+                              <span>•</span>
+                              <span className="capitalize">{gymTheme.borderRadius}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className="px-2.5 py-1 rounded text-[10px] font-bold bg-slate-800 text-emerald-400 border border-emerald-500/30 font-mono">
+                          {gym.plan}
                         </span>
-                      )}
-                      {gym.billingStatus === "pendiente" && (
-                        <span className="inline-flex items-center gap-1.5 text-amber-400 font-bold bg-amber-500/10 px-2.5 py-1 rounded border border-amber-500/30 text-[10px] font-mono">
-                          <Clock className="w-3.5 h-3.5" /> Pago Pendiente
-                        </span>
-                      )}
-                      {gym.billingStatus === "suspendido" && (
-                        <span className="inline-flex items-center gap-1.5 text-rose-400 font-bold bg-rose-500/10 px-2.5 py-1 rounded border border-rose-500/30 text-[10px] font-mono">
-                          <AlertTriangle className="w-3.5 h-3.5" /> Suspendido
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <select
-                          value={gym.billingStatus}
-                          onChange={(e) => onUpdateGymStatus(gym.id, e.target.value as any)}
-                          className="text-xs bg-slate-950 border border-slate-800 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-emerald-500 cursor-pointer"
-                        >
-                          <option value="al_dia">Al Día</option>
-                          <option value="pendiente">Pendiente</option>
-                          <option value="suspendido">Suspendido</option>
-                        </select>
-                        <button
-                          onClick={() => setEditingGym(gym)}
-                          className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded border border-slate-700 transition-colors cursor-pointer"
-                          title="Editar Gimnasio"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setItemToDelete({ type: "gym", id: gym.id, name: gym.name })}
-                          className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded border border-rose-500/30 transition-colors cursor-pointer"
-                          title="Eliminar Gimnasio"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="py-3.5 px-4 font-mono font-bold text-white">
+                        ${gym.monthlyFee} USD/mes
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className="font-mono font-semibold text-white">{gym.totalMembers}</span> atletas
+                      </td>
+                      <td className="py-3.5 px-4">
+                        {gym.billingStatus === "al_dia" && (
+                          <span className="inline-flex items-center gap-1.5 text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-1 rounded border border-emerald-500/30 text-[10px] font-mono">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Al Día
+                          </span>
+                        )}
+                        {gym.billingStatus === "pendiente" && (
+                          <span className="inline-flex items-center gap-1.5 text-amber-400 font-bold bg-amber-500/10 px-2.5 py-1 rounded border border-amber-500/30 text-[10px] font-mono">
+                            <Clock className="w-3.5 h-3.5" /> Pago Pendiente
+                          </span>
+                        )}
+                        {gym.billingStatus === "suspendido" && (
+                          <span className="inline-flex items-center gap-1.5 text-rose-400 font-bold bg-rose-500/10 px-2.5 py-1 rounded border border-rose-500/30 text-[10px] font-mono">
+                            <AlertTriangle className="w-3.5 h-3.5" /> Suspendido
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <select
+                            value={gym.billingStatus}
+                            onChange={(e) => onUpdateGymStatus(gym.id, e.target.value as any)}
+                            className="text-xs bg-slate-950 border border-slate-800 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-emerald-500 cursor-pointer"
+                          >
+                            <option value="al_dia">Al Día</option>
+                            <option value="pendiente">Pendiente</option>
+                            <option value="suspendido">Suspendido</option>
+                          </select>
+                          <button
+                            onClick={() => startEditingGym(gym)}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded border border-slate-700 transition-colors cursor-pointer"
+                            title="Editar Gimnasio & CSS"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setItemToDelete({ type: "gym", id: gym.id, name: gym.name })}
+                            className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded border border-rose-500/30 transition-colors cursor-pointer"
+                            title="Eliminar Gimnasio"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -889,19 +1031,19 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
       {/* MODAL: ADD GYM */}
       {isAddGymOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-slate-900 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-800 text-slate-200">
-            <div className="p-5 bg-slate-950 border-b border-slate-800 text-white flex justify-between items-center">
+          <div className="bg-slate-900 rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-slate-800 text-slate-200">
+            <div className="p-5 bg-slate-950 border-b border-slate-800 text-white flex justify-between items-center shrink-0">
               <h3 className="font-bold text-base flex items-center gap-2 font-mono">
                 <Building2 className="w-5 h-5 text-emerald-400" /> Nuevo Gimnasio (Tenant)
               </h3>
               <button
                 onClick={() => setIsAddGymOpen(false)}
-                className="text-slate-400 hover:text-white text-lg font-bold"
+                className="text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
               >
                 ✕
               </button>
             </div>
-            <form onSubmit={handleCreateGym} className="p-6 space-y-4 text-xs">
+            <form onSubmit={handleCreateGym} className="p-6 space-y-4 text-xs overflow-y-auto max-h-[calc(90vh-80px)]">
               <div>
                 <label className="block text-slate-300 font-bold mb-1">Nombre del Gimnasio</label>
                 <input
@@ -909,7 +1051,12 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
                   required
                   placeholder="Ej: Olympia Fitness Club"
                   value={newGymName}
-                  onChange={(e) => setNewGymName(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setNewGymName(val);
+                    const rgb = hexToRgb(newGymPrimaryColor);
+                    setNewGymCustomCss(generateDefaultGymCss(val || "Gimnasio", newGymPrimaryColor, rgb, newGymRadius));
+                  }}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
                 />
               </div>
@@ -978,6 +1125,252 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
                   onChange={(e) => setNewGymEmail(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:border-emerald-500"
                 />
+              </div>
+
+              {/* SECCIÓN: IDENTIDAD VISUAL Y CSS EXCLUSIVO DEL GIMNASIO */}
+              <div className="p-4 bg-slate-950/90 rounded-xl border border-slate-800 space-y-3.5">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <Palette className="w-4 h-4 text-emerald-400" />
+                    <span className="font-bold text-white text-xs uppercase tracking-wide font-mono">
+                      Identidad Visual & CSS Exclusivo de la Sede
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30 font-mono font-semibold">
+                    CSS Aislado por Gimnasio
+                  </span>
+                </div>
+
+                {/* Selección de Estilo Predefinido */}
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1.5 text-[11px]">
+                    1. Selecciona un Estilo / Paleta Base:
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {PRESET_GYM_THEMES.map((preset) => {
+                      const isSelected = newGymThemePreset === preset.themeId;
+                      return (
+                        <button
+                          key={preset.themeId}
+                          type="button"
+                          onClick={() => handleSelectPreset(preset.themeId, false)}
+                          className={`p-2 rounded-lg border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                            isSelected
+                              ? "bg-slate-900 border-emerald-500 shadow-xs ring-1 ring-emerald-500/40"
+                              : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full mb-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className="w-3.5 h-3.5 rounded-full border border-white/20 shrink-0"
+                                style={{ backgroundColor: preset.primaryColor }}
+                              />
+                              <span
+                                className="w-2 h-2 rounded-full border border-white/20 shrink-0"
+                                style={{ backgroundColor: preset.accentColor }}
+                              />
+                            </div>
+                            {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+                          </div>
+                          <div className="text-[11px] font-bold text-white leading-tight truncate">
+                            {preset.themeName.split(" ")[0]}
+                          </div>
+                          <div className="text-[9px] text-slate-400 truncate mt-0.5">
+                            {preset.primaryColor}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Colores y Radio de Borde */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1 text-[11px]">
+                      Color Primario (Marca)
+                    </label>
+                    <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-lg p-1.5">
+                      <input
+                        type="color"
+                        value={newGymPrimaryColor}
+                        onChange={(e) => {
+                          const hex = e.target.value;
+                          setNewGymPrimaryColor(hex);
+                          setNewGymThemePreset("custom");
+                          const rgb = hexToRgb(hex);
+                          setNewGymCustomCss(generateDefaultGymCss(newGymName || "Gimnasio", hex, rgb, newGymRadius));
+                        }}
+                        className="w-7 h-7 rounded border border-slate-700 cursor-pointer bg-transparent"
+                      />
+                      <input
+                        type="text"
+                        value={newGymPrimaryColor}
+                        onChange={(e) => {
+                          const hex = e.target.value;
+                          setNewGymPrimaryColor(hex);
+                          setNewGymThemePreset("custom");
+                          const rgb = hexToRgb(hex);
+                          setNewGymCustomCss(generateDefaultGymCss(newGymName || "Gimnasio", hex, rgb, newGymRadius));
+                        }}
+                        className="bg-transparent font-mono text-xs text-white focus:outline-none w-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1 text-[11px]">
+                      Color de Acento
+                    </label>
+                    <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-lg p-1.5">
+                      <input
+                        type="color"
+                        value={newGymAccentColor}
+                        onChange={(e) => {
+                          setNewGymAccentColor(e.target.value);
+                          setNewGymThemePreset("custom");
+                        }}
+                        className="w-7 h-7 rounded border border-slate-700 cursor-pointer bg-transparent"
+                      />
+                      <input
+                        type="text"
+                        value={newGymAccentColor}
+                        onChange={(e) => {
+                          setNewGymAccentColor(e.target.value);
+                          setNewGymThemePreset("custom");
+                        }}
+                        className="bg-transparent font-mono text-xs text-white focus:outline-none w-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1 text-[11px]">
+                      Bordes / Radio CSS
+                    </label>
+                    <select
+                      value={newGymRadius}
+                      onChange={(e) => {
+                        const r = e.target.value as any;
+                        setNewGymRadius(r);
+                        const rgb = hexToRgb(newGymPrimaryColor);
+                        setNewGymCustomCss(generateDefaultGymCss(newGymName || "Gimnasio", newGymPrimaryColor, rgb, r));
+                      }}
+                      className="w-full px-2.5 py-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-200 text-xs focus:border-emerald-500 cursor-pointer font-mono"
+                    >
+                      <option value="sharp">Agudo (4px) - Fuerza & CrossFit</option>
+                      <option value="rounded">Redondeado (8px) - Modern Tech</option>
+                      <option value="curved">Curvado (16px) - Balance & Fitness</option>
+                      <option value="pill">Píldora (24px) - Dynamic Soft</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Previsualización en Vivo de la Identidad CSS */}
+                <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                    <span className="flex items-center gap-1.5 font-bold text-slate-300">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Vista Previa con este CSS
+                    </span>
+                    <span>Tono: {newGymPrimaryColor}</span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2.5 p-2.5 rounded-lg bg-slate-950 border border-slate-800/80">
+                    <button
+                      type="button"
+                      className="px-3.5 py-1.5 text-xs font-bold text-slate-950 transition-transform cursor-default"
+                      style={{
+                        backgroundColor: newGymPrimaryColor,
+                        borderRadius:
+                          newGymRadius === "sharp"
+                            ? "4px"
+                            : newGymRadius === "rounded"
+                            ? "8px"
+                            : newGymRadius === "curved"
+                            ? "16px"
+                            : "24px",
+                        boxShadow: `0 4px 14px ${newGymPrimaryColor}44`,
+                      }}
+                    >
+                      Botón de Acción
+                    </button>
+
+                    <span
+                      className="px-2.5 py-1 text-[11px] font-bold font-mono"
+                      style={{
+                        backgroundColor: `${newGymPrimaryColor}1f`,
+                        color: newGymPrimaryColor,
+                        border: `1px solid ${newGymPrimaryColor}55`,
+                        borderRadius:
+                          newGymRadius === "sharp"
+                            ? "4px"
+                            : newGymRadius === "rounded"
+                            ? "8px"
+                            : newGymRadius === "curved"
+                            ? "16px"
+                            : "24px",
+                      }}
+                    >
+                      {newGymCode || "SEDE-01"} ACTIVO
+                    </span>
+
+                    <div
+                      className="px-3 py-1.5 text-[11px] text-white flex items-center gap-2 bg-slate-900 border-l-2"
+                      style={{
+                        borderLeftColor: newGymPrimaryColor,
+                        borderRadius: "6px",
+                      }}
+                    >
+                      <span className="text-slate-400">Atletas:</span>
+                      <span className="font-bold font-mono" style={{ color: newGymPrimaryColor }}>
+                        120
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Editor Directo de Código CSS */}
+                <div className="border-t border-slate-800/80 pt-2">
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setShowNewGymCssEditor(!showNewGymCssEditor)}
+                      className="text-[11px] font-mono text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Code className="w-3.5 h-3.5" />
+                      {showNewGymCssEditor ? "Ocultar Editor de Código CSS" : "Personalizar Código CSS Directo (Avanzado)"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const rgb = hexToRgb(newGymPrimaryColor);
+                        setNewGymCustomCss(
+                          generateDefaultGymCss(newGymName || "Gimnasio", newGymPrimaryColor, rgb, newGymRadius)
+                        );
+                      }}
+                      className="text-[10px] text-slate-400 hover:text-slate-200 font-mono underline cursor-pointer"
+                    >
+                      Restaurar plantilla CSS
+                    </button>
+                  </div>
+
+                  {showNewGymCssEditor && (
+                    <div className="mt-2 space-y-1.5">
+                      <p className="text-[10px] text-slate-400">
+                        CSS inyectado en tiempo real exclusivamente para esta sede. Puedes añadir animaciones, gradientes, o sobrescribir clases.
+                      </p>
+                      <textarea
+                        rows={7}
+                        value={newGymCustomCss}
+                        onChange={(e) => setNewGymCustomCss(e.target.value)}
+                        className="w-full font-mono text-[11px] p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-emerald-400 focus:outline-none focus:border-emerald-500 selection:bg-emerald-500/30"
+                        placeholder="/* Escribe aquí reglas CSS personalizadas para este gym */"
+                        spellCheck={false}
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Sección: Cuenta de Usuario y Contraseña para el Administrador del Gimnasio */}
@@ -1144,25 +1537,21 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
       {/* MODAL: EDIT GYM */}
       {editingGym && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-slate-900 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-800 text-slate-200">
-            <div className="p-5 bg-slate-950 border-b border-slate-800 text-white flex justify-between items-center">
+          <div className="bg-slate-900 rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-slate-800 text-slate-200">
+            <div className="p-5 bg-slate-950 border-b border-slate-800 text-white flex justify-between items-center shrink-0">
               <h3 className="font-bold text-base flex items-center gap-2 font-mono">
                 <Edit className="w-5 h-5 text-emerald-400" /> Editar Gimnasio ({editingGym.code})
               </h3>
               <button
                 onClick={() => setEditingGym(null)}
-                className="text-slate-400 hover:text-white text-lg font-bold"
+                className="text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
               >
                 ✕
               </button>
             </div>
             <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                onEditGym(editingGym);
-                setEditingGym(null);
-              }}
-              className="p-6 space-y-4 text-xs"
+              onSubmit={handleUpdateGymSubmit}
+              className="p-6 space-y-4 text-xs overflow-y-auto max-h-[calc(90vh-80px)]"
             >
               <div>
                 <label className="block text-slate-300 font-bold mb-1">Nombre del Gimnasio</label>
@@ -1250,17 +1639,269 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({
                   />
                 </div>
               </div>
+
+              {/* SECCIÓN EDITAR IDENTIDAD VISUAL Y CSS */}
+              <div className="p-4 bg-slate-950/90 rounded-xl border border-slate-800 space-y-3.5">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <Palette className="w-4 h-4 text-emerald-400" />
+                    <span className="font-bold text-white text-xs uppercase tracking-wide font-mono">
+                      Identidad Visual & CSS Exclusivo de la Sede
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30 font-mono font-semibold">
+                    CSS Aislado por Gimnasio
+                  </span>
+                </div>
+
+                {/* Selección de Estilo Predefinido */}
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1.5 text-[11px]">
+                    1. Cambiar Estilo / Paleta Base:
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {PRESET_GYM_THEMES.map((preset) => {
+                      const isSelected = editGymThemePreset === preset.themeId;
+                      return (
+                        <button
+                          key={preset.themeId}
+                          type="button"
+                          onClick={() => handleSelectPreset(preset.themeId, true)}
+                          className={`p-2 rounded-lg border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                            isSelected
+                              ? "bg-slate-900 border-emerald-500 shadow-xs ring-1 ring-emerald-500/40"
+                              : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full mb-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className="w-3.5 h-3.5 rounded-full border border-white/20 shrink-0"
+                                style={{ backgroundColor: preset.primaryColor }}
+                              />
+                              <span
+                                className="w-2 h-2 rounded-full border border-white/20 shrink-0"
+                                style={{ backgroundColor: preset.accentColor }}
+                              />
+                            </div>
+                            {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+                          </div>
+                          <div className="text-[11px] font-bold text-white leading-tight truncate">
+                            {preset.themeName.split(" ")[0]}
+                          </div>
+                          <div className="text-[9px] text-slate-400 truncate mt-0.5">
+                            {preset.primaryColor}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Colores y Radio de Borde */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1 text-[11px]">
+                      Color Primario (Marca)
+                    </label>
+                    <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-lg p-1.5">
+                      <input
+                        type="color"
+                        value={editGymPrimaryColor}
+                        onChange={(e) => {
+                          const hex = e.target.value;
+                          setEditGymPrimaryColor(hex);
+                          setEditGymThemePreset("custom");
+                          const rgb = hexToRgb(hex);
+                          setEditGymCustomCss(
+                            generateDefaultGymCss(editingGym.name, hex, rgb, editGymRadius)
+                          );
+                        }}
+                        className="w-7 h-7 rounded border border-slate-700 cursor-pointer bg-transparent"
+                      />
+                      <input
+                        type="text"
+                        value={editGymPrimaryColor}
+                        onChange={(e) => {
+                          setEditGymPrimaryColor(e.target.value);
+                          setEditGymThemePreset("custom");
+                          const rgb = hexToRgb(e.target.value);
+                          setEditGymCustomCss(
+                            generateDefaultGymCss(editingGym.name, e.target.value, rgb, editGymRadius)
+                          );
+                        }}
+                        className="bg-transparent font-mono text-xs text-white focus:outline-none w-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1 text-[11px]">
+                      Color de Acento
+                    </label>
+                    <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-lg p-1.5">
+                      <input
+                        type="color"
+                        value={editGymAccentColor}
+                        onChange={(e) => {
+                          setEditGymAccentColor(e.target.value);
+                          setEditGymThemePreset("custom");
+                        }}
+                        className="w-7 h-7 rounded border border-slate-700 cursor-pointer bg-transparent"
+                      />
+                      <input
+                        type="text"
+                        value={editGymAccentColor}
+                        onChange={(e) => {
+                          setEditGymAccentColor(e.target.value);
+                          setEditGymThemePreset("custom");
+                        }}
+                        className="bg-transparent font-mono text-xs text-white focus:outline-none w-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1 text-[11px]">
+                      Bordes / Radio CSS
+                    </label>
+                    <select
+                      value={editGymRadius}
+                      onChange={(e) => {
+                        const r = e.target.value as any;
+                        setEditGymRadius(r);
+                        const rgb = hexToRgb(editGymPrimaryColor);
+                        setEditGymCustomCss(
+                          generateDefaultGymCss(editingGym.name, editGymPrimaryColor, rgb, r)
+                        );
+                      }}
+                      className="w-full px-2.5 py-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-200 text-xs focus:border-emerald-500 cursor-pointer font-mono"
+                    >
+                      <option value="sharp">Agudo (4px) - Fuerza & CrossFit</option>
+                      <option value="rounded">Redondeado (8px) - Modern Tech</option>
+                      <option value="curved">Curvado (16px) - Balance & Fitness</option>
+                      <option value="pill">Píldora (24px) - Dynamic Soft</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Previsualización en Vivo de la Identidad CSS */}
+                <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                    <span className="flex items-center gap-1.5 font-bold text-slate-300">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Vista Previa con este CSS
+                    </span>
+                    <span>Tono: {editGymPrimaryColor}</span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2.5 p-2.5 rounded-lg bg-slate-950 border border-slate-800/80">
+                    <button
+                      type="button"
+                      className="px-3.5 py-1.5 text-xs font-bold text-slate-950 transition-transform cursor-default"
+                      style={{
+                        backgroundColor: editGymPrimaryColor,
+                        borderRadius:
+                          editGymRadius === "sharp"
+                            ? "4px"
+                            : editGymRadius === "rounded"
+                            ? "8px"
+                            : editGymRadius === "curved"
+                            ? "16px"
+                            : "24px",
+                        boxShadow: `0 4px 14px ${editGymPrimaryColor}44`,
+                      }}
+                    >
+                      Botón de Acción
+                    </button>
+
+                    <span
+                      className="px-2.5 py-1 text-[11px] font-bold font-mono"
+                      style={{
+                        backgroundColor: `${editGymPrimaryColor}1f`,
+                        color: editGymPrimaryColor,
+                        border: `1px solid ${editGymPrimaryColor}55`,
+                        borderRadius:
+                          editGymRadius === "sharp"
+                            ? "4px"
+                            : editGymRadius === "rounded"
+                            ? "8px"
+                            : editGymRadius === "curved"
+                            ? "16px"
+                            : "24px",
+                      }}
+                    >
+                      {editingGym.code} ACTIVO
+                    </span>
+
+                    <div
+                      className="px-3 py-1.5 text-[11px] text-white flex items-center gap-2 bg-slate-900 border-l-2"
+                      style={{
+                        borderLeftColor: editGymPrimaryColor,
+                        borderRadius: "6px",
+                      }}
+                    >
+                      <span className="text-slate-400">Atletas:</span>
+                      <span className="font-bold font-mono" style={{ color: editGymPrimaryColor }}>
+                        {editingGym.totalMembers}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Editor Directo de Código CSS */}
+                <div className="border-t border-slate-800/80 pt-2">
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setShowEditGymCssEditor(!showEditGymCssEditor)}
+                      className="text-[11px] font-mono text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Code className="w-3.5 h-3.5" />
+                      {showEditGymCssEditor ? "Ocultar Editor de Código CSS" : "Personalizar Código CSS Directo (Avanzado)"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const rgb = hexToRgb(editGymPrimaryColor);
+                        setEditGymCustomCss(
+                          generateDefaultGymCss(editingGym.name, editGymPrimaryColor, rgb, editGymRadius)
+                        );
+                      }}
+                      className="text-[10px] text-slate-400 hover:text-slate-200 font-mono underline cursor-pointer"
+                    >
+                      Restaurar plantilla CSS
+                    </button>
+                  </div>
+
+                  {showEditGymCssEditor && (
+                    <div className="mt-2 space-y-1.5">
+                      <p className="text-[10px] text-slate-400">
+                        CSS inyectado en tiempo real exclusivamente para esta sede. Puedes añadir animaciones, gradientes, o sobrescribir clases.
+                      </p>
+                      <textarea
+                        rows={7}
+                        value={editGymCustomCss}
+                        onChange={(e) => setEditGymCustomCss(e.target.value)}
+                        className="w-full font-mono text-[11px] p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-emerald-400 focus:outline-none focus:border-emerald-500 selection:bg-emerald-500/30"
+                        placeholder="/* Escribe aquí reglas CSS personalizadas para este gym */"
+                        spellCheck={false}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setEditingGym(null)}
-                  className="px-4 py-2 border border-slate-800 rounded-lg text-slate-300 font-semibold hover:bg-slate-800 transition-colors"
+                  className="px-4 py-2 border border-slate-800 rounded-lg text-slate-300 font-semibold hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg font-bold shadow-sm transition-colors"
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg font-bold shadow-sm transition-colors cursor-pointer"
                 >
                   Guardar Cambios
                 </button>

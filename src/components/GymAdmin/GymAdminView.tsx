@@ -74,6 +74,8 @@ interface GymAdminViewProps {
   onDeleteUser?: (userId: string) => void;
   onAssignRoutinesToClient?: (clientId: string, routineIds: string[]) => void;
   onAssignClientsToRoutine?: (routineId: string, clientIds: string[]) => void;
+  onRemoveRoutineFromClient?: (clientId: string, routineId: string) => void;
+  onUnassignAllRoutinesFromClient?: (clientId: string) => void;
 }
 
 export const GymAdminView: React.FC<GymAdminViewProps> = ({
@@ -108,6 +110,8 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
   onDeleteUser,
   onAssignRoutinesToClient,
   onAssignClientsToRoutine,
+  onRemoveRoutineFromClient,
+  onUnassignAllRoutinesFromClient,
 }) => {
   const [activeTab, setActiveTab] = useState<"clientes" | "rutinas" | "pagos" | "extras" | "tips" | "usuarios">("clientes");
 
@@ -234,11 +238,90 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
     setIsQuickAssignModalOpen(false);
   };
 
+  const handleRemoveRoutineAssignment = (clientId: string, routineId: string) => {
+    if (onRemoveRoutineFromClient) {
+      onRemoveRoutineFromClient(clientId, routineId);
+    } else if (onAssignRoutinesToClient) {
+      const client = gymClients.find((c) => c.id === clientId);
+      if (client) {
+        const currentRots = client.assignedRoutineIds || (client.assignedRoutineId ? [client.assignedRoutineId] : []);
+        onAssignRoutinesToClient(clientId, currentRots.filter((id) => id !== routineId));
+      }
+    } else {
+      const client = gymClients.find((c) => c.id === clientId);
+      if (client) {
+        const currentRots = client.assignedRoutineIds || (client.assignedRoutineId ? [client.assignedRoutineId] : []);
+        const updated = currentRots.filter((id) => id !== routineId);
+        onEditClient({
+          ...client,
+          assignedRoutineId: updated[0] || undefined,
+          assignedRoutineIds: updated,
+        });
+      }
+    }
+
+    if (assigningClient && assigningClient.id === clientId) {
+      setSelectedRoutineIdsForClient((prev) => prev.filter((id) => id !== routineId));
+    }
+    if (assigningRoutine && assigningRoutine.id === routineId) {
+      setSelectedClientIdsForRoutine((prev) => prev.filter((id) => id !== clientId));
+    }
+    if (editingClient && editingClient.id === clientId) {
+      const currentRots = editingClient.assignedRoutineIds || (editingClient.assignedRoutineId ? [editingClient.assignedRoutineId] : []);
+      const updated = currentRots.filter((id) => id !== routineId);
+      setEditingClient({
+        ...editingClient,
+        assignedRoutineId: updated[0] || undefined,
+        assignedRoutineIds: updated,
+      });
+    }
+    if (editingRoutine && editingRoutine.id === routineId) {
+      const currentClients = editingRoutine.assignedClientIds || [];
+      const updated = currentClients.filter((id) => id !== clientId);
+      setEditingRoutine({
+        ...editingRoutine,
+        assignedClientIds: updated,
+      });
+    }
+  };
+
+  const handleUnassignAllRoutinesFromAthlete = (clientId: string) => {
+    if (onUnassignAllRoutinesFromClient) {
+      onUnassignAllRoutinesFromClient(clientId);
+    } else if (onAssignRoutinesToClient) {
+      onAssignRoutinesToClient(clientId, []);
+    } else {
+      const client = gymClients.find((c) => c.id === clientId);
+      if (client) {
+        onEditClient({
+          ...client,
+          assignedRoutineId: undefined,
+          assignedRoutineIds: [],
+        });
+      }
+    }
+
+    if (assigningClient && assigningClient.id === clientId) {
+      setSelectedRoutineIdsForClient([]);
+    }
+    if (editingClient && editingClient.id === clientId) {
+      setEditingClient({
+        ...editingClient,
+        assignedRoutineId: undefined,
+        assignedRoutineIds: [],
+      });
+    }
+  };
+
   // Delete confirmation state
   const [deleteConfirm, setDeleteConfirm] = useState<{
-    type: "client" | "routine" | "payment" | "extraItem" | "extraPurchase" | "tip" | "user";
+    type: "client" | "routine" | "payment" | "extraItem" | "extraPurchase" | "tip" | "user" | "unassign_routine" | "unassign_all_routines";
     id: string;
     name: string;
+    clientId?: string;
+    clientName?: string;
+    routineId?: string;
+    routineName?: string;
   } | null>(null);
 
   // Form states: New Client
@@ -717,20 +800,69 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
                         </td>
                         <td className="py-3.5 px-4">
                           {clientAssignedRoutines.length > 0 ? (
-                            <div className="space-y-1">
-                              <div className="inline-flex items-center gap-1 text-emerald-300 font-bold bg-emerald-500/15 px-2 py-0.5 rounded border border-emerald-500/30 text-[10px]">
-                                <Dumbbell className="w-3 h-3 text-emerald-400" />
-                                <span>{clientAssignedRoutines.length} {clientAssignedRoutines.length === 1 ? "rutina" : "rutinas"}</span>
+                            <div className="space-y-1.5 min-w-[190px]">
+                              <div className="flex items-center justify-between gap-1">
+                                <div className="inline-flex items-center gap-1 text-emerald-300 font-bold bg-emerald-500/15 px-2 py-0.5 rounded border border-emerald-500/30 text-[10px]">
+                                  <Dumbbell className="w-3 h-3 text-emerald-400" />
+                                  <span>{clientAssignedRoutines.length} {clientAssignedRoutines.length === 1 ? "rutina" : "rutinas"}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => openClientAssignmentModal(client)}
+                                  className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold hover:underline cursor-pointer"
+                                >
+                                  Gestionar
+                                </button>
                               </div>
-                              <p className="text-[10px] text-slate-400 truncate max-w-[150px]" title={clientAssignedRoutines.map((r) => `${r.day}: ${r.name}`).join("\n")}>
-                                {clientAssignedRoutines.map((r) => r.day.slice(0, 3)).join(", ")}
-                              </p>
-                              <button
-                                onClick={() => openClientAssignmentModal(client)}
-                                className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold hover:underline block cursor-pointer"
-                              >
-                                Gestionar
-                              </button>
+
+                              <div className="flex flex-wrap gap-1">
+                                {clientAssignedRoutines.map((r) => (
+                                  <span
+                                    key={r.id}
+                                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-900 border border-slate-750 text-[10px] text-slate-200 group hover:border-rose-500/40 transition-colors"
+                                    title={`${r.day}: ${r.name} (${r.muscleGroup})`}
+                                  >
+                                    <span className="text-emerald-400 font-mono font-bold text-[9px]">{r.day.slice(0, 3)}</span>
+                                    <span className="truncate max-w-[85px]">{r.name}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setDeleteConfirm({
+                                          type: "unassign_routine",
+                                          id: `${client.id}___${r.id}`,
+                                          name: `Rutina "${r.name}" (${r.day}) asignada a ${client.name}`,
+                                          clientId: client.id,
+                                          clientName: client.name,
+                                          routineId: r.id,
+                                          routineName: r.name,
+                                        });
+                                      }}
+                                      className="text-slate-500 hover:text-rose-400 p-0.5 rounded hover:bg-rose-500/20 transition-colors cursor-pointer"
+                                      title={`Eliminar rutina "${r.name}" asignada a ${client.name}`}
+                                    >
+                                      <Trash2 className="w-2.5 h-2.5" />
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+
+                              {clientAssignedRoutines.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDeleteConfirm({
+                                      type: "unassign_all_routines",
+                                      id: client.id,
+                                      name: `Todas las rutinas (${clientAssignedRoutines.length}) asignadas a ${client.name}`,
+                                      clientId: client.id,
+                                      clientName: client.name,
+                                    });
+                                  }}
+                                  className="text-[9px] text-rose-400/80 hover:text-rose-300 hover:underline flex items-center gap-1 cursor-pointer pt-0.5"
+                                >
+                                  <Trash2 className="w-2.5 h-2.5" /> Quitar todas las asignadas
+                                </button>
+                              )}
                             </div>
                           ) : (
                             <div className="space-y-1">
@@ -738,6 +870,7 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
                                 General Sede
                               </span>
                               <button
+                                type="button"
                                 onClick={() => openClientAssignmentModal(client)}
                                 className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold hover:underline flex items-center gap-0.5 cursor-pointer"
                               >
@@ -848,14 +981,48 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
 
                       {/* Assignment Status Pill */}
                       {assignedClients.length > 0 ? (
-                        <div className="mb-3 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-emerald-300 flex items-center gap-1">
-                            <Star className="w-3 h-3 text-emerald-400 fill-emerald-400" />
-                            Asignada a {assignedClients.length} {assignedClients.length === 1 ? "atleta" : "atletas"}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-mono truncate max-w-[110px]" title={assignedClients.map((c) => c.name).join(", ")}>
-                            {assignedClients.map((c) => c.name.split(" ")[0]).join(", ")}
-                          </span>
+                        <div className="mb-3 space-y-1.5">
+                          <div className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-emerald-300 flex items-center gap-1">
+                              <Star className="w-3 h-3 text-emerald-400 fill-emerald-400" />
+                              Asignada a {assignedClients.length} {assignedClients.length === 1 ? "atleta" : "atletas"}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => openRoutineAssignmentModal(routine)}
+                              className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold hover:underline cursor-pointer"
+                            >
+                              Gestionar
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {assignedClients.map((c) => (
+                              <span
+                                key={c.id}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-750 text-[10px] text-slate-200 group hover:border-rose-500/40 transition-colors"
+                              >
+                                <span className="truncate max-w-[90px]">{c.name}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDeleteConfirm({
+                                      type: "unassign_routine",
+                                      id: `${c.id}___${routine.id}`,
+                                      name: `Rutina "${routine.name}" asignada a ${c.name}`,
+                                      clientId: c.id,
+                                      clientName: c.name,
+                                      routineId: routine.id,
+                                      routineName: routine.name,
+                                    });
+                                  }}
+                                  className="text-slate-500 hover:text-rose-400 p-0.5 rounded hover:bg-rose-500/20 transition-colors cursor-pointer"
+                                  title={`Eliminar rutina "${routine.name}" de ${c.name}`}
+                                >
+                                  <Trash2 className="w-2.5 h-2.5" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
                         </div>
                       ) : (
                         <div className="mb-3 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between">
@@ -2188,9 +2355,27 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
                   <label className="text-[11px] font-bold text-slate-200 flex items-center gap-1.5">
                     <Dumbbell className="w-3.5 h-3.5 text-emerald-400" /> Rutinas Asignadas a este Atleta
                   </label>
-                  <span className="text-[10px] text-emerald-400 font-mono font-bold">
-                    {(editingClient.assignedRoutineIds || (editingClient.assignedRoutineId ? [editingClient.assignedRoutineId] : [])).length} activa(s)
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-emerald-400 font-mono font-bold">
+                      {(editingClient.assignedRoutineIds || (editingClient.assignedRoutineId ? [editingClient.assignedRoutineId] : [])).length} activa(s)
+                    </span>
+                    {(editingClient.assignedRoutineIds || (editingClient.assignedRoutineId ? [editingClient.assignedRoutineId] : [])).length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingClient({
+                            ...editingClient,
+                            assignedRoutineId: undefined,
+                            assignedRoutineIds: [],
+                          });
+                        }}
+                        className="text-[10px] text-rose-400 hover:text-rose-300 font-bold hover:underline cursor-pointer flex items-center gap-0.5"
+                        title="Eliminar todas las asignaciones de este atleta"
+                      >
+                        <Trash2 className="w-2.5 h-2.5" /> Quitar todas
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <p className="text-[10px] text-slate-400">
                   Marca las rutinas que tendrá disponibles este atleta en su plan y en su DeepSeek Coach:
@@ -2203,15 +2388,15 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
                       const currentAssigned = editingClient.assignedRoutineIds || (editingClient.assignedRoutineId ? [editingClient.assignedRoutineId] : []);
                       const isChecked = currentAssigned.includes(r.id);
                       return (
-                        <label
+                        <div
                           key={r.id}
-                          className={`flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer transition-colors ${
+                          className={`flex items-center justify-between p-2 rounded-lg border text-xs transition-colors ${
                             isChecked
                               ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-200"
                               : "bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700"
                           }`}
                         >
-                          <div className="flex items-center gap-2">
+                          <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
                             <input
                               type="checkbox"
                               checked={isChecked}
@@ -2230,14 +2415,33 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
                               }}
                               className="rounded text-emerald-500 focus:ring-emerald-500"
                             />
-                            <span className="font-semibold text-[11px]">{r.name}</span>
+                            <span className="font-semibold text-[11px] truncate">{r.name}</span>
+                          </label>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center gap-1 text-[10px] font-mono">
+                              <span className="text-emerald-400">{r.day}</span>
+                              <span className="text-slate-500">•</span>
+                              <span className="text-slate-400">{r.muscleGroup}</span>
+                            </div>
+                            {isChecked && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = currentAssigned.filter((id) => id !== r.id);
+                                  setEditingClient({
+                                    ...editingClient,
+                                    assignedRoutineId: next[0] || undefined,
+                                    assignedRoutineIds: next,
+                                  });
+                                }}
+                                className="text-slate-500 hover:text-rose-400 p-0.5 rounded hover:bg-rose-500/20 transition-colors cursor-pointer"
+                                title={`Eliminar rutina "${r.name}" de este cliente`}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
                           </div>
-                          <div className="flex items-center gap-1.5 text-[10px] font-mono">
-                            <span className="text-emerald-400">{r.day}</span>
-                            <span className="text-slate-500">•</span>
-                            <span className="text-slate-400">{r.muscleGroup}</span>
-                          </div>
-                        </label>
+                        </div>
                       );
                     })}
                   </div>
@@ -3145,12 +3349,56 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setSelectedRoutineIdsForClient([])}
-                    className="text-[11px] text-slate-400 hover:text-slate-200 hover:underline cursor-pointer"
+                    className="text-[11px] text-rose-400 hover:text-rose-300 hover:underline font-semibold cursor-pointer flex items-center gap-1"
                   >
-                    Desmarcar todas
+                    <Trash2 className="w-2.5 h-2.5" /> Desasignar todas
                   </button>
                 </div>
               </div>
+
+              {selectedRoutineIdsForClient.length > 0 && (
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      Rutinas asignadas actualmente:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRoutineIdsForClient([])}
+                      className="text-[10px] text-rose-400 hover:text-rose-300 font-bold hover:underline cursor-pointer"
+                    >
+                      Quitar todas
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {gymRoutines
+                      .filter((r) => selectedRoutineIdsForClient.includes(r.id))
+                      .map((r) => (
+                        <span
+                          key={r.id}
+                          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-900 border border-slate-750 text-[10px] text-slate-200"
+                        >
+                          <span className="text-emerald-400 font-mono font-bold text-[9px]">{r.day.slice(0, 3)}</span>
+                          <span className="font-semibold">{r.name}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedRoutineIdsForClient(
+                                selectedRoutineIdsForClient.filter((id) => id !== r.id)
+                              );
+                            }}
+                            className="text-slate-500 hover:text-rose-400 p-0.5 rounded hover:bg-rose-500/20 transition-colors cursor-pointer"
+                            title={`Eliminar asignación de ${r.name}`}
+                          >
+                            <Trash2 className="w-2.5 h-2.5" />
+                          </button>
+                        </span>
+                      ))}
+                  </div>
+                </div>
+              )}
 
               {gymRoutines.length === 0 ? (
                 <div className="text-center py-10 text-slate-500">
@@ -3191,13 +3439,30 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
                             <h4 className="font-bold text-xs text-white truncate">
                               {routine.name}
                             </h4>
-                            <div className="flex items-center gap-1.5 shrink-0 font-mono text-[10px]">
-                              <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-semibold border border-emerald-500/30">
-                                {routine.day}
-                              </span>
-                              <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                                {routine.muscleGroup}
-                              </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <div className="flex items-center gap-1.5 font-mono text-[10px]">
+                                <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-semibold border border-emerald-500/30">
+                                  {routine.day}
+                                </span>
+                                <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                                  {routine.muscleGroup}
+                                </span>
+                              </div>
+                              {isSelected && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedRoutineIdsForClient(
+                                      selectedRoutineIdsForClient.filter((id) => id !== routine.id)
+                                    );
+                                  }}
+                                  className="px-2 py-0.5 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 font-bold border border-rose-500/30 text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
+                                  title="Eliminar asignación de esta rutina"
+                                >
+                                  <Trash2 className="w-2.5 h-2.5" /> Quitar
+                                </button>
+                              )}
                             </div>
                           </div>
 
@@ -3351,7 +3616,44 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
                     <span>
                       {selectedClientIdsForRoutine.length} atleta(s) seleccionado(s)
                     </span>
+                    {selectedClientIdsForRoutine.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedClientIdsForRoutine([])}
+                        className="text-[10px] text-rose-400 hover:text-rose-300 font-bold hover:underline cursor-pointer"
+                      >
+                        Quitar todos
+                      </button>
+                    )}
                   </div>
+
+                  {selectedClientIdsForRoutine.length > 0 && (
+                    <div className="flex flex-wrap gap-1 p-2 bg-slate-950 border border-slate-800 rounded-lg">
+                      {gymClients
+                        .filter((c) => selectedClientIdsForRoutine.includes(c.id))
+                        .map((c) => (
+                          <span
+                            key={c.id}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-750 text-[10px] text-slate-200"
+                          >
+                            <span className="truncate max-w-[90px]">{c.name}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedClientIdsForRoutine(
+                                  selectedClientIdsForRoutine.filter((id) => id !== c.id)
+                                );
+                              }}
+                              className="text-slate-500 hover:text-rose-400 p-0.5 rounded hover:bg-rose-500/20 transition-colors cursor-pointer"
+                              title={`Desasignar ${c.name}`}
+                            >
+                              <Trash2 className="w-2.5 h-2.5" />
+                            </button>
+                          </span>
+                        ))}
+                    </div>
+                  )}
 
                   {gymClients.length === 0 ? (
                     <div className="text-center py-8 text-slate-500">
@@ -3402,15 +3704,21 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
                                 <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-medium">
                                   {client.membershipPlan}
                                 </span>
-                                <span
-                                  className={`text-[9px] px-1.5 py-0.5 rounded font-mono uppercase ${
-                                    client.status === "activo"
-                                      ? "bg-emerald-500/20 text-emerald-400"
-                                      : "bg-slate-800 text-slate-500"
-                                  }`}
-                                >
-                                  {client.status}
-                                </span>
+                                {isSelected && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedClientIdsForRoutine(
+                                        selectedClientIdsForRoutine.filter((id) => id !== client.id)
+                                      );
+                                    }}
+                                    className="px-1.5 py-0.5 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 font-bold border border-rose-500/30 text-[9px] flex items-center gap-1 cursor-pointer transition-colors"
+                                    title="Quitar asignación a este atleta"
+                                  >
+                                    <Trash2 className="w-2.5 h-2.5" /> Quitar
+                                  </button>
+                                )}
                               </div>
                             </div>
                           );
@@ -3593,7 +3901,15 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
           <div className="bg-slate-900 rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden border border-rose-500/40 text-slate-200">
             <div className="p-5 bg-slate-950 border-b border-slate-800 text-white flex justify-between items-center">
               <h3 className="font-bold text-sm flex items-center gap-2 text-rose-400">
-                <Trash2 className="w-5 h-5 text-rose-500" /> Confirmar Eliminación
+                {deleteConfirm.type === "unassign_routine" || deleteConfirm.type === "unassign_all_routines" ? (
+                  <>
+                    <Dumbbell className="w-5 h-5 text-rose-500" /> Confirmar Desasignación
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-5 h-5 text-rose-500" /> Confirmar Eliminación
+                  </>
+                )}
               </h3>
               <button
                 onClick={() => setDeleteConfirm(null)}
@@ -3604,13 +3920,19 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
             </div>
             <div className="p-5 space-y-3 text-xs">
               <p className="text-slate-300">
-                ¿Estás seguro de que deseas eliminar permanentemente:
+                {deleteConfirm.type === "unassign_routine"
+                  ? "¿Deseas eliminar la asignación de esta rutina al cliente?"
+                  : deleteConfirm.type === "unassign_all_routines"
+                  ? "¿Deseas eliminar todas las rutinas asignadas a este cliente?"
+                  : "¿Estás seguro de que deseas eliminar permanentemente:"}
               </p>
               <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 font-semibold text-rose-300">
                 {deleteConfirm.name}
               </div>
               <p className="text-slate-500 text-[11px]">
-                Esta acción no se puede deshacer.
+                {deleteConfirm.type === "unassign_routine" || deleteConfirm.type === "unassign_all_routines"
+                  ? "El atleta ya no tendrá asignada esta rutina en su panel ni en las consultas de su entrenador inteligente."
+                  : "Esta acción no se puede deshacer."}
               </p>
               <div className="pt-3 flex justify-end gap-2">
                 <button
@@ -3628,11 +3950,21 @@ export const GymAdminView: React.FC<GymAdminViewProps> = ({
                     if (deleteConfirm.type === "extraPurchase") onDeleteExtraPurchase(deleteConfirm.id);
                     if (deleteConfirm.type === "tip") onDeleteTip(deleteConfirm.id);
                     if (deleteConfirm.type === "user" && onDeleteUser) onDeleteUser(deleteConfirm.id);
+                    if (deleteConfirm.type === "unassign_routine" && deleteConfirm.clientId && deleteConfirm.routineId) {
+                      handleRemoveRoutineAssignment(deleteConfirm.clientId, deleteConfirm.routineId);
+                    }
+                    if (deleteConfirm.type === "unassign_all_routines" && deleteConfirm.clientId) {
+                      handleUnassignAllRoutinesFromAthlete(deleteConfirm.clientId);
+                    }
                     setDeleteConfirm(null);
                   }}
                   className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-bold shadow-sm transition-colors cursor-pointer"
                 >
-                  Sí, Eliminar
+                  {deleteConfirm.type === "unassign_routine"
+                    ? "Sí, Desasignar Rutina"
+                    : deleteConfirm.type === "unassign_all_routines"
+                    ? "Sí, Desasignar Todas"
+                    : "Sí, Eliminar"}
                 </button>
               </div>
             </div>

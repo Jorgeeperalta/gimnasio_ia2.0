@@ -84,19 +84,24 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 
           {/* Right Action Bar */}
           <div className="flex items-center space-x-3">
-            {/* Active Gym Selector for Gym Admin if managing multiple or checking other gyms */}
-            {currentUser.role === "gym_admin" && (
+            {/* Active Gym Selector / Indicator */}
+            {(currentUser.role === "gym_admin" || currentUser.role === "super_admin") && (
               <div className="hidden md:flex items-center bg-slate-900/90 rounded-lg px-3 py-1.5 border border-slate-800">
-                <Building2 className="w-4 h-4 text-emerald-400 mr-2" />
+                <span
+                  className="w-3 h-3 rounded-full mr-2 shrink-0 shadow-xs border border-white/20"
+                  style={{ backgroundColor: currentGym?.theme?.primaryColor || "#10b981" }}
+                  title={`Tema: ${currentGym?.theme?.themeName || "Predeterminado"}`}
+                />
                 <div className="text-left">
-                  <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider font-mono">
-                    Sede Activa
+                  <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider font-mono flex items-center gap-1">
+                    <span>Sede Activa:</span>
+                    <span className="text-emerald-400 font-bold">{currentGym?.code}</span>
                   </div>
                   <select
                     id="gym-selector"
                     value={selectedGymId}
                     onChange={(e) => setSelectedGymId(e.target.value)}
-                    className="bg-transparent text-xs font-bold text-slate-200 focus:outline-none cursor-pointer pr-2 font-mono"
+                    className="bg-transparent text-xs font-bold text-slate-200 focus:outline-none cursor-pointer pr-2 font-mono max-w-[150px] truncate"
                   >
                     {gyms.map((gym) => (
                       <option key={gym.id} value={gym.id} className="bg-slate-950 text-slate-200">
@@ -119,20 +124,21 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                   <select
                     id="client-selector"
                     value={selectedClientId}
-                    onChange={(e) => setSelectedClientId(e.target.value)}
+                    onChange={(e) => {
+                      const newId = e.target.value;
+                      setSelectedClientId(newId);
+                      const target = clients.find((c) => c.id === newId);
+                      if (target && target.gymId) {
+                        setSelectedGymId(target.gymId);
+                      }
+                    }}
                     className="bg-transparent text-xs font-bold text-slate-200 focus:outline-none cursor-pointer pr-2"
                   >
-                    {gymClients.length > 0 ? (
-                      gymClients.map((client) => (
-                        <option key={client.id} value={client.id} className="bg-slate-950 text-slate-200">
-                          {client.name} {client.debtAmount > 0 ? `(Debe $${client.debtAmount})` : "✓ Al día"}
-                        </option>
-                      ))
-                    ) : (
-                      <option value={currentClient.id} className="bg-slate-950 text-slate-200">
-                        {currentClient.name}
+                    {clients.map((client) => (
+                      <option key={client.id} value={client.id} className="bg-slate-950 text-slate-200">
+                        {client.name} • {client.gymName} {client.debtAmount > 0 ? `(Debe $${client.debtAmount})` : "✓ Al día"}
                       </option>
-                    )}
+                    ))}
                   </select>
                 </div>
               </div>
