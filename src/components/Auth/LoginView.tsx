@@ -64,22 +64,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onOpenArchitectur
           </div>
           <div>
             <span className="font-bold text-base tracking-tight text-white font-mono">
-              GymCore
+              
             </span>
-            <span className="ml-2 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-mono">
-              SaaS Multi-Gimnasio
-            </span>
+          
           </div>
         </div>
 
-        {onOpenArchitecture && (
-          <button
-            onClick={onOpenArchitecture}
-            className="text-xs font-mono text-emerald-400 hover:text-emerald-300 border border-slate-800 hover:border-emerald-500/40 bg-slate-900 px-3 py-1.5 rounded-lg transition-colors"
-          >
-            Ver Esquema MySQL & PHP
-          </button>
-        )}
+   
       </header>
 
       {/* Center login card */}
@@ -92,7 +83,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onOpenArchitectur
                 <KeyRound className="w-6 h-6" />
               </div>
               <h1 className="text-xl font-bold text-white tracking-tight">
-                Iniciar Sesión en GymCore
+                Iniciar Sesión
               </h1>
               <p className="text-xs text-slate-400">
                 Cada rol accede de manera aislada y exclusiva a su módulo correspondiente.

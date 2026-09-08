@@ -1,7 +1,6 @@
 import express, { Request, Response } from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import mysql from "mysql2/promise";
 
@@ -436,7 +435,7 @@ async function startServer() {
     }
   });
 
-  // Client Chat endpoint (DeepSeek / Gemini Coach)
+  // Client Chat endpoint (DeepSeek Coach)
   app.post("/api/chat", async (req: Request, res: Response) => {
     try {
       const {
@@ -456,7 +455,7 @@ async function startServer() {
         return res.status(400).json({ error: "Mensaje requerido" });
       }
 
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = process.env.DEEPSEEK_API_KEY;
 
       const systemPrompt = `Eres DeepSeek Coach, el asistente inteligente y motivador de entrenamiento físico para los clientes del gimnasio "${gymName || "Gimnasio"}".
 Tu usuario es "${clientName || "Atleta"}".
@@ -481,26 +480,48 @@ DIRECTRICES:
 
       if (apiKey) {
         try {
-          const ai = new GoogleGenAI({
-            apiKey,
-            httpOptions: {
+          const deepSeekResponse = await fetch(
+            process.env.DEEPSEEK_API_URL || "https://api.deepseek.com/chat/completions",
+            {
+              method: "POST",
               headers: {
-                "User-Agent": "aistudio-build",
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${apiKey}`,
               },
+              body: JSON.stringify({
+                model: process.env.DEEPSEEK_MODEL || "deepseek-chat",
+                messages: [
+                  { role: "system", content: systemPrompt },
+                  { role: "user", content: message },
+                ],
+                temperature: 0.7,
+                stream: false,
+              }),
             },
-          });
+          );
 
-          const response = await ai.models.generateContent({
-            model: "gemini-3.8-flash",
-            contents: `${systemPrompt}\n\nMensaje del cliente: ${message}`,
-          });
+          if (!deepSeekResponse.ok) {
+            throw new Error(`DeepSeek API respondió ${deepSeekResponse.status}`);
+          }
+
+          const deepSeekData = await deepSeekResponse.json() as {
+            choices?: Array<{
+              message?: { content?: string; reasoning_content?: string };
+            }>;
+          };
+          const assistantMessage = deepSeekData.choices?.[0]?.message;
+
+          if (!assistantMessage?.content) {
+            throw new Error("DeepSeek no devolvió contenido");
+          }
 
           return res.json({
-            reply: response.text || "No se pudo generar una respuesta clara.",
-            modelUsed: "gemini-3.8-flash (DeepSeek Gym Coach Mode)",
+            reply: assistantMessage.content,
+            thought: assistantMessage.reasoning_content,
+            modelUsed: process.env.DEEPSEEK_MODEL || "deepseek-chat",
           });
         } catch (apiError: any) {
-          console.warn("Gemini API error, using smart fallback:", apiError?.message);
+          console.warn("DeepSeek API error, using smart fallback:", apiError?.message);
         }
       }
 

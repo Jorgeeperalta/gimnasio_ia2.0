@@ -70,7 +70,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             <div>
               <div className="flex items-center space-x-2">
                 <span className="font-bold text-lg tracking-tight text-white font-mono">
-                  GymCore
+                  
                 </span>
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-mono">
                   SaaS Multi-Gimnasio
@@ -145,15 +145,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             )}
 
             {/* Code / Architecture Modal Button */}
-            <button
-              id="open-architecture-btn"
-              onClick={onOpenArchitecture}
-              className="hidden sm:flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-emerald-300 border border-slate-800 hover:border-emerald-500/40 text-xs font-semibold px-3 py-2 rounded-lg transition-all font-mono"
-              title="Ver código PHP, MySQL y Vue 3 Vuetify"
-            >
-              <Code2 className="w-4 h-4 text-emerald-400" />
-              <span>PHP / MySQL</span>
-            </button>
+          
 
             {/* Logout Button */}
             <button
